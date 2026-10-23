@@ -179,9 +179,9 @@ export default function ApplicationTracker({
         style={{
           background: "#FFFFFF",
           border: `1px solid ${RULE}`,
-          borderRadius: 8,
+          borderRadius: 4,
           padding: "18px 20px",
-          boxShadow: "0 2px 6px rgba(35, 50, 74, 0.04)",
+          boxShadow: "0 1px 3px rgba(22, 32, 50, 0.04)",
           transition: "all 0.2s ease",
           opacity: isWithdrawn ? 0.75 : 1,
         }}
@@ -203,7 +203,7 @@ export default function ApplicationTracker({
               <span
                 style={{
                   fontSize: 11,
-                  fontWeight: 700,
+                  fontWeight: 600,
                   textTransform: "uppercase",
                   color: SEAL,
                   letterSpacing: 0.5,
@@ -220,7 +220,7 @@ export default function ApplicationTracker({
             <h3
               style={{
                 fontFamily: serif,
-                fontSize: 20,
+                fontSize: 19,
                 fontWeight: 700,
                 color: INK,
                 margin: "0 0 6px 0",
@@ -235,11 +235,12 @@ export default function ApplicationTracker({
                 style={{
                   fontFamily: "monospace",
                   fontSize: 12,
-                  background: "#F1F5F9",
+                  background: "#F8F6F0",
                   padding: "2px 8px",
-                  borderRadius: 4,
+                  borderRadius: 3,
                   color: "#334155",
                   fontWeight: 600,
+                  border: `1px solid ${RULE}`,
                 }}
               >
                 {app.id}
@@ -253,7 +254,7 @@ export default function ApplicationTracker({
                   cursor: "pointer",
                   padding: "2px 6px",
                   fontSize: 11,
-                  color: copiedId === app.id ? OK : "#6B7280",
+                  color: copiedId === app.id ? OK : "#64748B",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 4,
@@ -273,18 +274,18 @@ export default function ApplicationTracker({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                padding: "5px 12px",
-                borderRadius: 20,
-                fontSize: 12,
-                fontWeight: 700,
+                padding: "4px 10px",
+                borderRadius: 4,
+                fontSize: 11.5,
+                fontWeight: 600,
                 background:
                   isWithdrawn
                     ? "#F1F5F9"
                     : app.currentStage === 5
-                    ? "#E8F5E9"
+                    ? "#F0FDF4"
                     : app.currentStage === 4
-                    ? "#E3F2FD"
-                    : "#FFF8E1",
+                    ? "#EFF6FF"
+                    : "#FFFBEB",
                 color:
                   isWithdrawn
                     ? "#64748B"
@@ -297,17 +298,17 @@ export default function ApplicationTracker({
                   isWithdrawn
                     ? "#CBD5E1"
                     : app.currentStage === 5
-                    ? OK
+                    ? "#BBF7D0"
                     : app.currentStage === 4
-                    ? "#0284C7"
-                    : "#F59E0B"
+                    ? "#BFDBFE"
+                    : "#FDE68A"
                 }`,
               }}
             >
-              <Clock size={13} />
+              <Clock size={12} />
               <span>{app.status}</span>
             </span>
-            <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: "#64748B", marginTop: 4 }}>
               {isWithdrawn
                 ? "Application Archived"
                 : `Current Stage: ${app.currentStage} of 5 Completed`}
@@ -327,26 +328,26 @@ export default function ApplicationTracker({
           }}
         >
           <div>
-            <span style={{ color: "#6B7280" }}>Sanctioned / Requested:</span>
-            <div style={{ fontWeight: 700, color: INK, fontSize: 15, marginTop: 2 }}>
+            <span style={{ color: "#64748B" }}>Sanctioned / Requested:</span>
+            <div style={{ fontWeight: 700, color: INK, fontSize: 14.5, marginTop: 2 }}>
               ₹{(app.sanctionedAmount || app.requestedAmount)?.toLocaleString("en-IN")}
             </div>
           </div>
           <div>
-            <span style={{ color: "#6B7280" }}>Govt Subsidy Assistance:</span>
-            <div style={{ fontWeight: 700, color: SEAL, fontSize: 15, marginTop: 2 }}>
+            <span style={{ color: "#64748B" }}>Govt Subsidy Assistance:</span>
+            <div style={{ fontWeight: 700, color: SEAL, fontSize: 14.5, marginTop: 2 }}>
               ₹{(app.subsidyAmount || 0)?.toLocaleString("en-IN")}
             </div>
           </div>
           <div>
-            <span style={{ color: "#6B7280" }}>Implementing Bank:</span>
+            <span style={{ color: "#64748B" }}>Implementing Bank:</span>
             <div style={{ fontWeight: 600, color: INK, marginTop: 2 }}>
               {app.bankName}
             </div>
             <div style={{ fontSize: 11, color: "#64748B" }}>{app.bankBranch}</div>
           </div>
           <div>
-            <span style={{ color: "#6B7280" }}>Estimated Target:</span>
+            <span style={{ color: "#64748B" }}>Estimated Target:</span>
             <div style={{ fontWeight: 600, color: OK, marginTop: 2 }}>
               {app.estimatedDisbursement}
             </div>
@@ -354,9 +355,9 @@ export default function ApplicationTracker({
         </div>
 
         {/* 5-STAGE APPLICATION PROGRESS TRACKER */}
-        <div style={{ padding: "18px 0 10px 0" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: INK, marginBottom: 12 }}>
-            OFFICIAL WORKFLOW PROGRESS (5 MANDATORY STAGES):
+        <div style={{ padding: "16px 0 10px 0" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: INK, marginBottom: 12 }}>
+            Workflow Progress (5 Mandatory Verification Stages):
           </div>
 
           <div
@@ -365,7 +366,7 @@ export default function ApplicationTracker({
               gridTemplateColumns: "repeat(5, 1fr)",
               gap: 8,
               position: "relative",
-              marginBottom: 16,
+              marginBottom: 14,
             }}
           >
             {[
@@ -382,8 +383,8 @@ export default function ApplicationTracker({
                 <div key={s.stage} style={{ textAlign: "center", position: "relative" }}>
                   <div
                     style={{
-                      width: 28,
-                      height: 28,
+                      width: 26,
+                      height: 26,
                       borderRadius: "50%",
                       margin: "0 auto 6px auto",
                       display: "flex",
@@ -391,17 +392,16 @@ export default function ApplicationTracker({
                       justifyContent: "center",
                       background: isDone ? OK : isCurrent ? SEAL : "#F1F5F9",
                       color: isDone || isCurrent ? "#FFFFFF" : "#64748B",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      boxShadow: isCurrent ? "0 0 0 3px rgba(181, 101, 29, 0.2)" : "none",
+                      fontSize: 11.5,
+                      fontWeight: 600,
                     }}
                   >
-                    {isDone ? <Check size={14} /> : s.stage}
+                    {isDone ? <Check size={13} /> : s.stage}
                   </div>
                   <div
                     style={{
                       fontSize: 11,
-                      fontWeight: isCurrent || isDone ? 700 : 500,
+                      fontWeight: isCurrent || isDone ? 600 : 500,
                       color: isDone ? OK : isCurrent ? INK : "#64748B",
                     }}
                   >
@@ -589,22 +589,22 @@ export default function ApplicationTracker({
       {/* ------------------------------------------------------------- */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: SEAL, marginBottom: 4 }}>
-          <ShieldCheck size={18} />
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
-            CITIZEN APPLICATION LIFE-CYCLE TRACKER
+          <ShieldCheck size={16} />
+          <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            Citizen Application Portfolio &amp; Tracker
           </span>
           <span
             style={{
               fontSize: 10.5,
-              background: "#F7F4EB",
-              border: `1px solid ${SEAL}`,
-              color: SEAL,
+              background: "#F8F6F0",
+              border: `1px solid ${RULE}`,
+              color: "#475569",
               padding: "2px 8px",
-              borderRadius: 12,
+              borderRadius: 4,
               fontWeight: 600,
             }}
           >
-            National DBT Portal Standard
+            5-Stage Verification Standard
           </span>
         </div>
 
@@ -613,8 +613,8 @@ export default function ApplicationTracker({
             <h2 style={{ fontFamily: serif, fontSize: 26, color: INK, margin: "0 0 6px 0", fontWeight: 700 }}>
               Scheme Application Progress
             </h2>
-            <p style={{ fontFamily: sans, fontSize: 13.5, color: "#596275", margin: 0, maxWidth: 650 }}>
-              End-to-end transparent verification tracking from digital submission to District Industries Centre (DIC) scrutiny, Lead Bank credit appraisal, and Direct Benefit Transfer (DBT).
+            <p style={{ fontFamily: sans, fontSize: 13.5, color: "#475569", margin: 0, maxWidth: 650, lineHeight: 1.5 }}>
+              Verification tracking from digital submission to District Industries Centre (DIC) scrutiny, Lead Bank credit appraisal, and Direct Benefit Transfer (DBT).
             </p>
           </div>
 
@@ -633,11 +633,10 @@ export default function ApplicationTracker({
               fontSize: 13,
               fontWeight: 600,
               cursor: "pointer",
-              boxShadow: "0 2px 4px rgba(181, 101, 29, 0.2)",
             }}
           >
-            <span>Browse Eligible Schemes</span>
-            <ArrowRight size={15} />
+            <span>Browse Scheme Directory</span>
+            <ArrowRight size={14} />
           </button>
         </div>
       </div>
@@ -1493,17 +1492,17 @@ export default function ApplicationTracker({
             {/* Official Disclaimer */}
             <div
               style={{
-                background: "#FAF7EE",
+                background: "#F8F6F0",
                 border: `1px solid ${RULE}`,
                 borderRadius: 4,
                 padding: "10px 12px",
                 fontSize: 11,
-                color: "#6B7280",
+                color: "#475569",
                 lineHeight: 1.5,
-                marginBottom: 18,
+                marginBottom: 16,
               }}
             >
-              Note: This is a digitally signed electronic receipt under National e-Governance standards. No physical signature is required. For any inquiries, quote your Application Reference No: <strong>{receiptApp.id}</strong> at your nearest District Industries Centre (DIC) or Lead Bank branch.
+              <strong>Official Notice:</strong> This document is an automated electronic status summary generated by Scheme Matcher for citizen record-keeping and preliminary submission. Final loan sanction, interest subvention, and disbursement are subject to institutional appraisal, document verification, and due diligence by the designated bank branch.
             </div>
 
             {/* Modal Actions */}

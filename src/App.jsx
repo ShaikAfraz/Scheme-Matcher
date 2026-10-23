@@ -409,16 +409,15 @@ export default function App() {
       {/* Main Government Portal Header Masthead */}
       <header
         style={{
-          background: "rgba(255, 255, 255, 0.92)",
-          backdropFilter: "blur(8px)",
+          background: "#FFFFFF",
           borderBottom: `1px solid ${RULE}`,
-          padding: "10px clamp(12px, 3.5vw, 40px)",
-          boxShadow: "0 1px 4px rgba(35, 50, 74, 0.05)",
+          padding: "12px clamp(12px, 3.5vw, 40px) 0 clamp(12px, 3.5vw, 40px)",
+          boxShadow: "0 1px 3px rgba(22, 32, 50, 0.04)",
         }}
       >
         <div
           style={{
-            maxWidth: 1040,
+            maxWidth: 1060,
             margin: "0 auto",
             display: "flex",
             justifyContent: "space-between",
@@ -434,24 +433,25 @@ export default function App() {
           >
             <div
               style={{
-                width: 38,
-                height: 38,
-                borderRadius: "50%",
-                background: "#FAF7EE",
-                border: `1.5px solid ${SEAL}`,
+                width: 40,
+                height: 40,
+                borderRadius: 4,
+                background: "#F8F6F0",
+                border: `1px solid ${SEAL}`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                flexShrink: 0,
               }}
             >
               <Landmark size={22} color={SEAL} />
             </div>
             <div>
-              <div style={{ fontFamily: serif, fontSize: 21, color: INK, fontWeight: 700, lineHeight: 1.15 }}>
+              <div style={{ fontFamily: serif, fontSize: 20, color: INK, fontWeight: 700, lineHeight: 1.2 }}>
                 {t.appName}
               </div>
-              <div style={{ fontFamily: sans, fontSize: 11, color: "#606F7B", marginTop: 2, fontWeight: 500 }}>
-                भारत सरकार · Ministry of Social Justice &amp; Empowerment · Government of India
+              <div style={{ fontFamily: sans, fontSize: 11, color: "#64748B", marginTop: 2, fontWeight: 500 }}>
+                Ministry of Social Justice &amp; Empowerment · Government of India
               </div>
             </div>
           </div>
@@ -464,13 +464,13 @@ export default function App() {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                background: dbStatus?.status === "connected" ? "#ECFDF5" : "#FFFBEB",
-                border: `1px solid ${dbStatus?.status === "connected" ? "#A7F3D0" : "#FDE68A"}`,
-                padding: "3px 9px",
-                borderRadius: 14,
+                background: dbStatus?.status === "connected" ? "#F0FDF4" : "#FFFBEB",
+                border: `1px solid ${dbStatus?.status === "connected" ? "#BBF7D0" : "#FDE68A"}`,
+                padding: "3px 10px",
+                borderRadius: 4,
                 fontSize: 11,
                 fontWeight: 600,
-                color: dbStatus?.status === "connected" ? "#065F46" : "#92400E",
+                color: dbStatus?.status === "connected" ? "#166534" : "#92400E",
               }}
               title={
                 dbStatus?.status === "connected"
@@ -480,14 +480,13 @@ export default function App() {
             >
               <span
                 style={{
-                  width: 7,
-                  height: 7,
+                  width: 6,
+                  height: 6,
                   borderRadius: "50%",
-                  background: dbStatus?.status === "connected" ? "#10B981" : "#F59E0B",
-                  boxShadow: dbStatus?.status === "connected" ? "0 0 6px #10B981" : "none",
+                  background: dbStatus?.status === "connected" ? "#16A34A" : "#D97706",
                 }}
               />
-              <span>{dbStatus?.status === "connected" ? "SQLite DB Connected" : "Local DB Mode"}</span>
+              <span>{dbStatus?.status === "connected" ? "SQLite Active · 19 Schemes Codified" : "Local Database Active"}</span>
             </div>
             {currentUser ? (
               <div
@@ -498,11 +497,11 @@ export default function App() {
                   background: "#FFFFFF",
                   border: `1px solid ${RULE}`,
                   padding: "4px 10px 4px 6px",
-                  borderRadius: 20,
-                  boxShadow: "0 1px 2px rgba(35, 50, 74, 0.05)",
+                  borderRadius: 4,
+                  boxShadow: "0 1px 2px rgba(22, 32, 50, 0.04)",
                 }}
               >
-                <span style={{ fontSize: 20 }}>{currentUser.avatar || "👤"}</span>
+                <span style={{ fontSize: 18 }}>{currentUser.avatar || "👤"}</span>
                 <button
                   type="button"
                   onClick={() => navigateTo("login")}
@@ -515,10 +514,10 @@ export default function App() {
                   }}
                   title="View Citizen Profile Details"
                 >
-                  <div style={{ fontSize: 12, fontWeight: 700, color: INK }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: INK }}>
                     {currentUser.name}
                   </div>
-                  <div style={{ fontSize: 10, color: SEAL, fontWeight: 600 }}>
+                  <div style={{ fontSize: 10, color: SEAL, fontWeight: 500 }}>
                     {currentUser.categoryBadge ? currentUser.categoryBadge.split("·")[0] : "Verified Citizen"}
                   </div>
                 </button>
@@ -529,7 +528,7 @@ export default function App() {
                   style={{
                     background: "none",
                     border: "none",
-                    color: "#9A3B32",
+                    color: "#991B1B",
                     cursor: "pointer",
                     padding: 2,
                     marginLeft: 6,
@@ -550,14 +549,14 @@ export default function App() {
                   alignItems: "center",
                   gap: 6,
                   background: "#FFFFFF",
-                  border: `1.5px solid ${SEAL}`,
-                  color: INK,
-                  padding: "6px 14px",
-                  borderRadius: 20,
-                  fontSize: 12.5,
+                  border: `1px solid ${SEAL}`,
+                  color: SEAL,
+                  padding: "6px 12px",
+                  borderRadius: 4,
+                  fontSize: 12,
                   fontWeight: 600,
                   cursor: "pointer",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
                 }}
               >
                 <KeyRound size={13} color={SEAL} />
@@ -575,7 +574,7 @@ export default function App() {
                   gap: 4,
                   background: "none",
                   border: "none",
-                  color: "#6B7280",
+                  color: "#64748B",
                   fontFamily: sans,
                   fontSize: 11.5,
                   cursor: "pointer",
@@ -591,14 +590,14 @@ export default function App() {
         </div>
 
         {/* PRIMARY WEBSITE NAVIGATION BAR (REAL MULTI-PAGE TABS) */}
-        <div style={{ maxWidth: 1040, margin: "10px auto 0 auto", overflowX: "auto" }}>
-          <nav style={{ display: "flex", gap: 6, minWidth: "max-content", paddingBottom: 2 }}>
+        <div style={{ maxWidth: 1060, margin: "10px auto 0 auto", overflowX: "auto" }}>
+          <nav style={{ display: "flex", gap: 4, minWidth: "max-content", paddingBottom: 0 }}>
             {[
               { id: "home", label: "Home", icon: HomeIcon },
-              { id: "profile", label: "Find Schemes", icon: SlidersHorizontal },
+              { id: "profile", label: "Check Eligibility", icon: SlidersHorizontal },
               {
                 id: "results",
-                label: "Eligible Schemes",
+                label: "Scheme Directory",
                 icon: FileCheck2,
                 badge: (matches || displayMatches).length,
               },
@@ -618,7 +617,7 @@ export default function App() {
               { id: "assistant", label: "AI Scheme Sahayak", icon: MessageCircle },
               {
                 id: "login",
-                label: currentUser ? "My Account" : "Login / Register",
+                label: currentUser ? "My Account" : "Citizen Account",
                 icon: KeyRound,
               },
             ].map((tab) => {
@@ -633,36 +632,36 @@ export default function App() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 6,
-                    padding: "7px 12px",
-                    background: isActive ? "rgba(181, 101, 29, 0.1)" : "transparent",
+                    padding: "9px 13px",
+                    background: "transparent",
                     border: "none",
                     borderBottom: isActive ? `3px solid ${SEAL}` : "3px solid transparent",
-                    color: isActive ? INK : "#4A5568",
+                    color: isActive ? INK : "#64748B",
                     fontFamily: sans,
                     fontSize: 13,
-                    fontWeight: isActive ? 700 : 500,
+                    fontWeight: isActive ? 600 : 500,
                     cursor: "pointer",
                     borderRadius: "4px 4px 0 0",
                     transition: "all 0.15s ease",
                   }}
                   onMouseOver={(e) => {
-                    if (!isActive) e.currentTarget.style.background = "rgba(0, 0, 0, 0.04)";
+                    if (!isActive) e.currentTarget.style.color = INK;
                   }}
                   onMouseOut={(e) => {
-                    if (!isActive) e.currentTarget.style.background = "transparent";
+                    if (!isActive) e.currentTarget.style.color = "#64748B";
                   }}
                 >
-                  <TabIcon size={14} color={isActive ? SEAL : "#718096"} />
+                  <TabIcon size={14} color={isActive ? SEAL : "#94A3B8"} />
                   <span>{tab.label}</span>
                   {tab.badge !== null && tab.badge !== undefined && (
                     <span
                       style={{
                         fontSize: 10,
-                        background: tab.highlight ? "#1E3A8A" : isActive ? SEAL : "#718096",
+                        background: tab.highlight ? "#162032" : isActive ? SEAL : "#64748B",
                         color: "#FFFFFF",
                         padding: "1px 6px",
-                        borderRadius: 10,
-                        fontWeight: 700,
+                        borderRadius: 3,
+                        fontWeight: 600,
                       }}
                     >
                       {tab.badge}
@@ -863,13 +862,16 @@ export default function App() {
           </div>
         )}
 
-        {/* Elevated Glassmorphic Card Surface for Page Content */}
+        {/* Main Application Container Surface */}
         <div
-          className="portal-card-elevated"
           style={{
+            background: "#FFFFFF",
+            border: `1px solid ${RULE}`,
+            borderRadius: 4,
             padding: "clamp(20px, 3.5vw, 36px) clamp(20px, 4vw, 40px)",
             minHeight: 520,
             position: "relative",
+            boxShadow: "0 1px 3px rgba(22, 32, 50, 0.04)",
           }}
         >
           {/* Animated View Container */}
@@ -981,7 +983,7 @@ export default function App() {
       {/* Official Government of India Portal Footer */}
       <footer
         style={{
-          background: "rgba(35, 50, 74, 0.96)",
+          background: "#162032",
           color: "#E2E8F0",
           borderTop: `3px solid ${SEAL}`,
           padding: "36px clamp(16px, 4vw, 40px) 24px clamp(16px, 4vw, 40px)",
@@ -989,32 +991,35 @@ export default function App() {
           marginTop: "auto",
         }}
       >
-        <div style={{ maxWidth: 1040, margin: "0 auto" }}>
+        <div style={{ maxWidth: 1060, margin: "0 auto" }}>
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               gap: 28,
               paddingBottom: 24,
-              borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
             }}
           >
             {/* Ministry Col */}
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#FFFFFF", marginBottom: 8 }}>
-                <Landmark size={20} color="#FBBF24" />
+                <Landmark size={20} color="#D97706" />
                 <span style={{ fontWeight: 700, fontSize: 15, fontFamily: serif }}>
-                  AI Scheme Matcher &amp; Tracker
+                  Scheme Matcher &amp; Tracker
                 </span>
               </div>
-              <p style={{ fontSize: 12.5, color: "#94A3B8", lineHeight: 1.6, margin: 0 }}>
-                Ministry of Social Justice &amp; Empowerment, Government of India. Dedicated to transparent affirmative action, financial inclusion, and grievance-free welfare disbursement for India's marginalized entrepreneurs.
+              <p style={{ fontSize: 12.5, color: "#94A3B8", lineHeight: 1.6, margin: "0 0 10px 0" }}>
+                Assistive Decision-Support Platform for Affirmative Action and Financial Inclusion Schemes.
               </p>
+              <div style={{ fontSize: 11.5, color: "#94A3B8", background: "rgba(255,255,255,0.05)", padding: "6px 10px", borderRadius: 4, borderLeft: "3px solid #D97706" }}>
+                Academic Project Demonstration · BCA AI/ML Final Year
+              </div>
             </div>
 
             {/* Quick Links Col */}
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.5, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.5, marginBottom: 10 }}>
                 NATIONAL GOVERNMENT PORTALS
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 12.5, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1025,7 +1030,7 @@ export default function App() {
                 </li>
                 <li>
                   <a href="https://www.myscheme.gov.in" target="_blank" rel="noreferrer" style={{ color: "#CBD5E1", textDecoration: "none" }}>
-                    MyScheme National Platform ↗
+                    myScheme National Portal ↗
                   </a>
                 </li>
                 <li>
@@ -1043,13 +1048,13 @@ export default function App() {
 
             {/* Citizen Helplines Col */}
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.5, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.5, marginBottom: 10 }}>
                 CITIZEN HELPDESK &amp; ASSISTANCE
               </div>
               <div style={{ fontSize: 12.5, color: "#CBD5E1", lineHeight: 1.6 }}>
-                <div>Toll Free Helpline: <strong>1800-11-8008</strong></div>
-                <div>MoSJE Central Desk: <strong>+91 11 2338 1001</strong></div>
-                <div>Email: <strong>support.schemes@gov.in</strong></div>
+                <div>National Portal Helpline: <strong>1800-11-8008</strong></div>
+                <div>MoSJE Central Desk: <strong>011-2338 1001</strong></div>
+                <div>Technical Support: <strong>support.schemes@gov.in</strong></div>
                 <div style={{ marginTop: 6, color: "#94A3B8", fontSize: 11.5 }}>
                   Working Hours: Mon–Sat, 09:30 AM to 06:00 PM IST
                 </div>
@@ -1071,22 +1076,34 @@ export default function App() {
             }}
           >
             <div>
-              © 2026 Ministry of Social Justice &amp; Empowerment. Content owned &amp; maintained by Government of India.
+              © 2026 Scheme Matcher. Codified from Ministry of Social Justice &amp; Empowerment guidelines.
             </div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
               {dbStatus?.status === "connected" && (
                 <span style={{ color: "#34D399", fontWeight: 600 }}>
-                  ● Database: SQLite 3 ({dbStatus.counts?.users || 0} Users, {dbStatus.counts?.applications || 0} Applications)
+                  ● SQLite DB ({dbStatus.counts?.users || 0} Users, {dbStatus.counts?.applications || 0} Applications)
                 </span>
               )}
-              <span>Accessibility Statement</span>
+              <span>Terms of Use</span>
               <span>•</span>
-              <span>Screen Reader Access</span>
+              <span>Statutory Advisory</span>
               <span>•</span>
-              <span>Terms &amp; Conditions</span>
-              <span>•</span>
-              <span>Last Updated: 05 Oct 2026</span>
+              <span>Last Codified: Oct 2026</span>
             </div>
+          </div>
+
+          {/* Prominent Statutory Disclaimer */}
+          <div
+            style={{
+              marginTop: 14,
+              paddingTop: 10,
+              borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+              fontSize: 11,
+              color: "#64748B",
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>Official Advisory:</strong> Scheme Matcher provides algorithmic eligibility discovery based on codified rules published in official scheme guidelines. Match scores and checklists are for informational and preparation purposes only. Final approval, sanction, and disbursement are solely determined by designated government authorities and participating lending institutions following physical due diligence.
           </div>
         </div>
       </footer>

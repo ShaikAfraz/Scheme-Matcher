@@ -1,8 +1,35 @@
-import React from "react";
-import { User, IndianRupee, Building2, ArrowRight, Sparkles, UploadCloud, HeartHandshake, ShieldCheck } from "lucide-react";
+import React, { useState } from "react";
+import {
+  User,
+  IndianRupee,
+  Building2,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle2,
+  Sparkles,
+  UploadCloud,
+  HeartHandshake,
+  ShieldCheck,
+  Info,
+} from "lucide-react";
 import Field from "../components/Field.jsx";
 import VoiceReader from "../components/VoiceReader.jsx";
-import { INK, SEAL, OK, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
+import {
+  INK,
+  INK_MUTED,
+  INK_LIGHT,
+  PAPER,
+  CARD,
+  SURFACE_MUTED,
+  SEAL,
+  SEAL_HOVER,
+  OK,
+  RULE,
+  RULE_LIGHT,
+  inputStyle,
+  serif,
+  sans,
+} from "../theme/tokens.js";
 import { TRANSLATIONS } from "../theme/i18n.js";
 
 const STATES = [
@@ -34,6 +61,7 @@ export default function ProfileForm({
   onBack,
   lang = "en",
 }) {
+  const [currentStep, setCurrentStep] = useState(1); // 1: Demographics, 2: Category & Groups, 3: Economic & Enterprise
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
   const set = (k) => (e) => {
@@ -50,18 +78,19 @@ export default function ProfileForm({
     setProfile((p) => ({ ...p, [k]: !p[k] }));
   };
 
-  const canSubmit =
-    profile.age !== "" &&
-    profile.gender &&
-    profile.state &&
-    profile.category &&
+  const isStep1Valid = profile.age !== "" && profile.gender && profile.state;
+  const isStep2Valid = Boolean(profile.category);
+  const isStep3Valid =
     profile.income !== "" &&
     profile.businessStatus &&
     profile.businessType &&
     profile.financialRequirement !== "";
 
+  const canSubmit = isStep1Valid && isStep2Valid && isStep3Valid;
+
   return (
-    <div style={{ maxWidth: 680 }}>
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      {/* Back button */}
       {onBack && (
         <button
           type="button"
@@ -72,48 +101,477 @@ export default function ProfileForm({
             gap: 6,
             background: "none",
             border: "none",
-            color: "#5C6B84",
+            color: INK_MUTED,
             cursor: "pointer",
             fontFamily: sans,
             fontSize: 13,
             fontWeight: 600,
-            marginBottom: 14,
+            marginBottom: 16,
             padding: 0,
           }}
         >
-          ← Back
+          <ArrowLeft size={14} /> Back to Overview
         </button>
       )}
 
-      {/* Title & Voice Reader */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
-        <h2 style={{ fontFamily: serif, fontSize: 28, color: INK, margin: 0 }}>
-          {t.profileTitle}
-        </h2>
+      {/* Header and Voice Reader */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: 12,
+          marginBottom: 6,
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontFamily: serif,
+              fontSize: 26,
+              color: INK,
+              margin: "0 0 4px 0",
+              fontWeight: 700,
+            }}
+          >
+            Scheme Eligibility Questionnaire
+          </h1>
+          <p style={{ fontFamily: sans, fontSize: 13.5, color: INK_MUTED, margin: 0 }}>
+            Enter your details to identify all matching central and state welfare initiatives.
+          </p>
+        </div>
+
         <VoiceReader
           text={
             lang === "hi"
-              ? "कृपया अपनी आयु, सामाजिक वर्ग, आय और व्यवसाय का प्रकार चुनें। इसके आधार पर आपके लिए उपयुक्त सरकारी योजनाएं जांची जाएंगी।"
-              : "Please enter your age, social category, annual income, and funding requirement to discover all government schemes tailored for you."
+              ? "कृपया अपनी आयु, सामाजिक वर्ग, वार्षिक आय और उद्यम आवश्यकता भरें। नियम इंजन आपके लिए उपयुक्त योजनाएं जांचेगा।"
+              : "Please enter your demographic, social group, and financial parameters to calculate eligibility."
           }
           lang={lang}
           label={t.listen}
         />
       </div>
 
-      <p style={{ fontFamily: sans, fontSize: 13.5, color: "#6B7280", marginBottom: 18 }}>
-        {t.profileSubtitle}
-      </p>
+      {/* Step Progress Bar */}
+      <div
+        style={{
+          background: CARD,
+          border: `1px solid ${RULE}`,
+          borderRadius: 4,
+          padding: "12px 18px",
+          marginTop: 18,
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 12 }}>
+          {[
+            { step: 1, label: "1. Demographics" },
+            { step: 2, label: "2. Social Category" },
+            { step: 3, label: "3. Enterprise & Income" },
+          ].map((s) => (
+            <button
+              key={s.step}
+              type="button"
+              onClick={() => setCurrentStep(s.step)}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "2px 6px",
+                cursor: "pointer",
+                fontFamily: sans,
+                fontSize: 12.5,
+                fontWeight: currentStep === s.step ? 700 : 500,
+                color: currentStep === s.step ? SEAL : currentStep > s.step ? OK : INK_MUTED,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              {currentStep > s.step && <CheckCircle2 size={13} color={OK} />}
+              <span>{s.label}</span>
+            </button>
+          ))}
+        </div>
 
-      {/* Document Upload Shortcut Banner */}
+        {/* Progress track */}
+        <div style={{ height: 4, background: SURFACE_MUTED, borderRadius: 2, overflow: "hidden" }}>
+          <div
+            style={{
+              height: "100%",
+              width: currentStep === 1 ? "33.3%" : currentStep === 2 ? "66.6%" : "100%",
+              background: SEAL,
+              transition: "width 0.25s ease",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Questionnaire Form Container */}
+      <div
+        style={{
+          background: CARD,
+          border: `1px solid ${RULE}`,
+          borderRadius: 4,
+          padding: "24px 24px",
+          marginBottom: 24,
+          boxShadow: "0 1px 3px rgba(22, 32, 50, 0.04)",
+        }}
+      >
+        {/* ========================================================= */}
+        {/* STEP 1: DEMOGRAPHICS & LOCATION                           */}
+        {/* ========================================================= */}
+        {currentStep === 1 && (
+          <div>
+            <div style={{ borderBottom: `1px solid ${RULE_LIGHT}`, paddingBottom: 10, marginBottom: 18 }}>
+              <h2 style={{ fontFamily: sans, fontSize: 16, fontWeight: 700, color: INK, margin: "0 0 4px" }}>
+                Step 1: Personal Demographics &amp; Domicile
+              </h2>
+              <p style={{ fontFamily: sans, fontSize: 12.5, color: INK_MUTED, margin: 0 }}>
+                Age and state of residence determine whether central sector or state-specific schemes apply.
+              </p>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 18 }}>
+              <Field
+                label="Age (Years) *"
+                hint="Ministry guidelines establish strict minimum (18) and maximum (55–100) bounds."
+              >
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={profile.age}
+                  onChange={setNum("age")}
+                  placeholder="e.g. 28"
+                  style={inputStyle}
+                  required
+                />
+              </Field>
+
+              <Field
+                label="Gender *"
+                hint="Enables special concessional provisions for Women Entrepreneurs (e.g. WEP, Stand-Up)."
+              >
+                <select value={profile.gender} onChange={set("gender")} style={inputStyle} required>
+                  <option value="">Select Gender</option>
+                  <option value="Female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Transgender">Transgender (Eligible for SMILE Scheme)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </Field>
+
+              <Field
+                label="State of Domicile *"
+                hint="Used to filter state-specific subsidies and channelizing agencies (SCAs)."
+              >
+                <select value={profile.state} onChange={set("state")} style={inputStyle} required>
+                  <option value="">Select State / UT</option>
+                  {STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(2)}
+                disabled={!isStep1Valid}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "10px 22px",
+                  background: isStep1Valid ? SEAL : "#CBD5E1",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 4,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: isStep1Valid ? "pointer" : "not-allowed",
+                }}
+              >
+                <span>Next: Social Category &amp; Target Groups</span>
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 2: SOCIAL CATEGORY & AFFIRMATIVE GROUPS              */}
+        {/* ========================================================= */}
+        {currentStep === 2 && (
+          <div>
+            <div style={{ borderBottom: `1px solid ${RULE_LIGHT}`, paddingBottom: 10, marginBottom: 18 }}>
+              <h2 style={{ fontFamily: sans, fontSize: 16, fontWeight: 700, color: INK, margin: "0 0 4px" }}>
+                Step 2: Social Category &amp; Affirmative Action Groups
+              </h2>
+              <p style={{ fontFamily: sans, fontSize: 12.5, color: INK_MUTED, margin: 0 }}>
+                Ministry of Social Justice &amp; Empowerment mandates dedicated concessions for marginalized groups.
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <Field
+                label="Primary Social Category *"
+                hint="Select the category listed on your government caste/community certificate."
+              >
+                <select value={profile.category} onChange={set("category")} style={inputStyle} required>
+                  <option value="">Select Social Category</option>
+                  <option value="SC">Scheduled Caste (SC) — NSFDC Eligible</option>
+                  <option value="ST">Scheduled Tribe (ST) — NSTFDC Eligible</option>
+                  <option value="OBC">Other Backward Classes (OBC) — NBCFDC Eligible</option>
+                  <option value="General">General / Open Category</option>
+                  <option value="EWS">Economically Weaker Section (EWS)</option>
+                </select>
+              </Field>
+            </div>
+
+            {/* Special MoSJE Affirmative Group Checkboxes */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 8 }}>
+                Specific Ministry Beneficiary Designations (Select all that apply):
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+                {[
+                  {
+                    key: "isArtisan",
+                    label: "Traditional Artisan / Craftsperson",
+                    desc: "Practicing one of 18 trades (carpenters, potters, cobblers, tailors, etc.) for PM Vishwakarma.",
+                  },
+                  {
+                    key: "isSafaiKaramchari",
+                    label: "Safai Karamchari / Sanitation Worker",
+                    desc: "Sanitation workers, manual scavengers, and their dependents (NSKFDC schemes).",
+                  },
+                  {
+                    key: "isDivyangjan",
+                    label: "Person with Disability (Divyangjan)",
+                    desc: "Persons with disability holding a valid UDID card (NHFDC concessional loans).",
+                  },
+                  {
+                    key: "isTransgender",
+                    label: "Transgender Community Member",
+                    desc: "Transgender individuals eligible for comprehensive livelihood support under SMILE.",
+                  },
+                  {
+                    key: "isDnt",
+                    label: "De-Notified / Nomadic / Semi-Nomadic Tribe",
+                    desc: "Members of DNT/NT/SNT communities eligible for the national SEED scheme.",
+                  },
+                ].map((item) => (
+                  <label
+                    key={item.key}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "10px 12px",
+                      background: profile[item.key] ? "#FDF8F3" : "#FFFFFF",
+                      border: `1px solid ${profile[item.key] ? SEAL : RULE}`,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(profile[item.key])}
+                      onChange={toggleCheck(item.key)}
+                      style={{ marginTop: 3, accentColor: SEAL }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>{item.label}</div>
+                      <div style={{ fontSize: 11.5, color: INK_MUTED, marginTop: 2 }}>{item.desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(1)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "10px 18px",
+                  background: CARD,
+                  border: `1px solid ${RULE}`,
+                  color: INK,
+                  borderRadius: 4,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <ArrowLeft size={14} />
+                <span>Previous Step</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCurrentStep(3)}
+                disabled={!isStep2Valid}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "10px 22px",
+                  background: isStep2Valid ? SEAL : "#CBD5E1",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 4,
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  cursor: isStep2Valid ? "pointer" : "not-allowed",
+                }}
+              >
+                <span>Next: Income &amp; Enterprise</span>
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 3: ECONOMIC & ENTERPRISE PROFILE                     */}
+        {/* ========================================================= */}
+        {currentStep === 3 && (
+          <div>
+            <div style={{ borderBottom: `1px solid ${RULE_LIGHT}`, paddingBottom: 10, marginBottom: 18 }}>
+              <h2 style={{ fontFamily: sans, fontSize: 16, fontWeight: 700, color: INK, margin: "0 0 4px" }}>
+                Step 3: Economic Profile &amp; Project Funding
+              </h2>
+              <p style={{ fontFamily: sans, fontSize: 12.5, color: INK_MUTED, margin: 0 }}>
+                Income limits and financial requirements match you to appropriate term loans, capital subsidies, or micro-credit.
+              </p>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 18 }}>
+              <Field
+                label="Annual Family Income (₹) *"
+                hint="Total income of family as shown on Revenue authority income certificate."
+              >
+                <input
+                  type="number"
+                  min="0"
+                  step="5000"
+                  value={profile.income}
+                  onChange={setNum("income")}
+                  placeholder="e.g. 150000"
+                  style={inputStyle}
+                  required
+                />
+              </Field>
+
+              <Field
+                label="Funding / Loan Requirement (₹) *"
+                hint="Capital needed for tools, working capital, or workshop machinery."
+              >
+                <input
+                  type="number"
+                  min="1000"
+                  step="10000"
+                  value={profile.financialRequirement}
+                  onChange={setNum("financialRequirement")}
+                  placeholder="e.g. 200000"
+                  style={inputStyle}
+                  required
+                />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
+              <Field
+                label="Enterprise Status *"
+                hint="Some programs (like PMEGP) fund new units; others modernize existing trades."
+              >
+                <select value={profile.businessStatus} onChange={set("businessStatus")} style={inputStyle} required>
+                  <option value="">Select Enterprise Status</option>
+                  <option value="new">New Enterprise (Starting Fresh)</option>
+                  <option value="existing">Existing Enterprise (Expansion / Modernization)</option>
+                </select>
+              </Field>
+
+              <Field
+                label="Sector / Business Type *"
+                hint="Manufacturing qualifies for higher maximum subsidies under PMEGP and NSFDC."
+              >
+                <select value={profile.businessType} onChange={set("businessType")} style={inputStyle} required>
+                  <option value="">Select Sector</option>
+                  <option value="Manufacturing">Manufacturing / Fabrication / Production</option>
+                  <option value="Services">Services (Repairs, Beauty, IT, Logistics)</option>
+                  <option value="Trading">Trading / Retail / Micro-vending</option>
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 28 }}>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(2)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "10px 18px",
+                  background: CARD,
+                  border: `1px solid ${RULE}`,
+                  color: INK,
+                  borderRadius: 4,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <ArrowLeft size={14} />
+                <span>Previous Step</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={!canSubmit}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "12px 28px",
+                  background: canSubmit ? SEAL : "#CBD5E1",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 4,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: canSubmit ? "pointer" : "not-allowed",
+                  boxShadow: canSubmit ? "0 1px 3px rgba(163, 86, 25, 0.25)" : "none",
+                }}
+              >
+                <span>Calculate Eligible Schemes</span>
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Optional Document Upload Helper Banner */}
       {onGoToDocuments && (
         <div
           style={{
-            background: "#F2F6FA",
-            border: `1px solid #C8D8E8`,
-            borderRadius: 6,
-            padding: "10px 14px",
-            marginBottom: 20,
+            background: SURFACE_MUTED,
+            border: `1px solid ${RULE}`,
+            borderRadius: 4,
+            padding: "12px 16px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -123,8 +581,8 @@ export default function ProfileForm({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <UploadCloud size={16} color={SEAL} />
-            <span style={{ fontFamily: sans, fontSize: 12.5, color: INK }}>
-              {t.docUploadShortcut}
+            <span style={{ fontSize: 13, color: INK }}>
+              Already have your Aadhaar or Caste Certificate PDFs ready?
             </span>
           </div>
           <button
@@ -134,237 +592,16 @@ export default function ProfileForm({
               background: "none",
               border: "none",
               color: SEAL,
-              fontFamily: sans,
-              fontSize: 12.5,
+              fontSize: 13,
               fontWeight: 700,
               cursor: "pointer",
               padding: 0,
-              textDecoration: "underline",
             }}
           >
-            Upload Documents →
+            Open Document Vault →
           </button>
         </div>
       )}
-
-      {/* SPECIAL MARGINALIZED STATUS HIGHLIGHT (MoSJE Priority) */}
-      <div
-        style={{
-          background: "#FFFFFF",
-          border: `1.5px solid ${SEAL}`,
-          borderRadius: 6,
-          padding: "14px 16px",
-          marginBottom: 24,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <HeartHandshake size={17} color={SEAL} />
-          <span style={{ fontFamily: sans, fontSize: 13, fontWeight: 700, color: INK }}>
-            {t.specialGroupLabel}
-          </span>
-        </div>
-        <p style={{ fontFamily: sans, fontSize: 12, color: "#6B7280", margin: "0 0 10px" }}>
-          Special focus areas under the Ministry of Social Justice &amp; Empowerment with 100% credit guarantee &amp; capital subsidy.
-        </p>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: sans, fontSize: 13, color: INK }}>
-            <input
-              type="checkbox"
-              checked={!!profile.isSafaiKaramchari}
-              onChange={toggleCheck("isSafaiKaramchari")}
-              style={{ accentColor: SEAL, width: 16, height: 16 }}
-            />
-            <span>{t.isSafaiKaramchari}</span>
-          </label>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: sans, fontSize: 13, color: INK }}>
-            <input
-              type="checkbox"
-              checked={!!profile.isDivyangjan}
-              onChange={toggleCheck("isDivyangjan")}
-              style={{ accentColor: SEAL, width: 16, height: 16 }}
-            />
-            <span>{t.isDivyangjan}</span>
-          </label>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: sans, fontSize: 13, color: INK }}>
-            <input
-              type="checkbox"
-              checked={!!profile.isArtisan}
-              onChange={toggleCheck("isArtisan")}
-              style={{ accentColor: SEAL, width: 16, height: 16 }}
-            />
-            <span>{t.isArtisan}</span>
-          </label>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: sans, fontSize: 13, color: INK }}>
-            <input
-              type="checkbox"
-              checked={!!profile.isTransgender}
-              onChange={toggleCheck("isTransgender")}
-              style={{ accentColor: SEAL, width: 16, height: 16 }}
-            />
-            <span>{t.isTransgender}</span>
-          </label>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: sans, fontSize: 13, color: INK }}>
-            <input
-              type="checkbox"
-              checked={!!profile.isDnt}
-              onChange={toggleCheck("isDnt")}
-              style={{ accentColor: SEAL, width: 16, height: 16 }}
-            />
-            <span>{t.isDnt}</span>
-          </label>
-        </div>
-      </div>
-
-      {/* SECTION 1: PERSONAL */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        <User size={15} color={SEAL} />
-        <span style={{ fontFamily: sans, fontSize: 12, letterSpacing: 0.6, fontWeight: 700, color: SEAL }}>
-          PERSONAL INFORMATION
-        </span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
-        <Field label={t.ageLabel}>
-          <input
-            style={inputStyle}
-            type="number"
-            min="18"
-            max="100"
-            value={profile.age}
-            onChange={setNum("age")}
-            placeholder="e.g. 28"
-          />
-        </Field>
-
-        <Field label={t.genderLabel}>
-          <select style={inputStyle} value={profile.gender} onChange={set("gender")}>
-            <option value="">Select gender</option>
-            <option value="Female">Female (महिला)</option>
-            <option value="Male">Male (पुरुष)</option>
-            <option value="Other">Other / Transgender (किन्नर / तृतीय लिंग)</option>
-          </select>
-        </Field>
-
-        <Field label={t.stateLabel}>
-          <select style={inputStyle} value={profile.state} onChange={set("state")}>
-            <option value="">Select state</option>
-            {STATES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label={t.categoryLabel}>
-          <select style={inputStyle} value={profile.category} onChange={set("category")}>
-            <option value="">Select category</option>
-            <option value="SC">Scheduled Caste / अनुसूचित जाति (SC)</option>
-            <option value="ST">Scheduled Tribe / अनुसूचित जनजाति (ST)</option>
-            <option value="OBC">Other Backward Class / अन्य पिछड़ा वर्ग (OBC)</option>
-            <option value="DNT">De-Notified / Nomadic Tribe / विमुक्त घुमंतू (DNT)</option>
-            <option value="General">General / EWS (सामान्य / आर्थिक रूप से कमजोर)</option>
-          </select>
-        </Field>
-      </div>
-
-      {/* SECTION 2: FINANCIAL */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "24px 0 14px" }}>
-        <IndianRupee size={15} color={SEAL} />
-        <span style={{ fontFamily: sans, fontSize: 12, letterSpacing: 0.6, fontWeight: 700, color: SEAL }}>
-          FINANCIAL REQUIREMENTS
-        </span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
-        <Field label={t.incomeLabel} hint="Used for income-capped concessional schemes">
-          <input
-            style={inputStyle}
-            type="number"
-            min="0"
-            step="10000"
-            value={profile.income}
-            onChange={setNum("income")}
-            placeholder="e.g. 180000"
-          />
-        </Field>
-
-        <Field label={t.fundingLabel} hint="Loan, machinery, or micro-capital needed">
-          <input
-            style={inputStyle}
-            type="number"
-            min="0"
-            step="10000"
-            value={profile.financialRequirement}
-            onChange={setNum("financialRequirement")}
-            placeholder="e.g. 200000"
-          />
-        </Field>
-      </div>
-
-      {/* SECTION 3: BUSINESS */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "24px 0 14px" }}>
-        <Building2 size={15} color={SEAL} />
-        <span style={{ fontFamily: sans, fontSize: 12, letterSpacing: 0.6, fontWeight: 700, color: SEAL }}>
-          BUSINESS DETAILS
-        </span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
-        <Field label={t.statusLabel}>
-          <select style={inputStyle} value={profile.businessStatus} onChange={set("businessStatus")}>
-            <option value="">Select stage</option>
-            <option value="new">New enterprise / Greenfield (नया व्यवसाय शुरू करना है)</option>
-            <option value="existing">Existing business (पहले से चल रहा काम बढ़ाना है)</option>
-          </select>
-        </Field>
-
-        <Field label={t.typeLabel}>
-          <select style={inputStyle} value={profile.businessType} onChange={set("businessType")}>
-            <option value="">Select type</option>
-            <option value="Manufacturing">Manufacturing / Production (उत्पादन / निर्माण)</option>
-            <option value="Services">Services / Repairs / Salon / Transport (सेवाएं)</option>
-            <option value="Trading">Trading / Retail / Street Vending (दुकानदारी / व्यापार)</option>
-          </select>
-        </Field>
-      </div>
-
-      {/* Submit CTA */}
-      <div style={{ marginTop: 28 }}>
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={onSubmit}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "13px 26px",
-            background: canSubmit ? INK : "#C8BFAD",
-            color: "#FFFFFF",
-            border: "none",
-            borderRadius: 4,
-            fontFamily: sans,
-            fontSize: 14.5,
-            fontWeight: 600,
-            cursor: canSubmit ? "pointer" : "not-allowed",
-            letterSpacing: 0.3,
-            transition: "all 0.15s ease",
-          }}
-        >
-          <span>{t.matchBtn}</span>
-          <ArrowRight size={17} />
-        </button>
-
-        {!canSubmit && (
-          <p style={{ fontFamily: sans, fontSize: 12, color: "#8A8266", marginTop: 8 }}>
-            Please fill in all 8 profile fields above (or click a quick profile preset) to calculate eligibility.
-          </p>
-        )}
-      </div>
     </div>
   );
 }

@@ -174,18 +174,18 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              padding: "5px 12px",
+              padding: "4px 10px",
               fontFamily: sans,
-              fontSize: 12,
+              fontSize: 11.5,
               fontWeight: 600,
-              background: "#EAF5ED",
-              border: `1px solid #B8E0C2`,
-              color: "#1B5E20",
-              borderRadius: 20,
+              background: "#F0FDF4",
+              border: `1px solid #BBF7D0`,
+              color: "#166534",
+              borderRadius: 4,
             }}
           >
-            <ShieldCheck size={14} color={OK} />
-            <span>Secure Server AI Proxy</span>
+            <ShieldCheck size={13} color={OK} />
+            <span>Server-Side AI Proxy Active</span>
           </div>
         </div>
       </div>
@@ -203,8 +203,8 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
               padding: "4px 10px",
               background: "#FFFFFF",
               border: `1px solid ${RULE}`,
-              borderRadius: 14,
-              color: "#4A5568",
+              borderRadius: 4,
+              color: "#475569",
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
@@ -224,9 +224,9 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
           height: 380,
           overflowY: "auto",
           border: `1px solid ${RULE}`,
-          borderRadius: 6,
+          borderRadius: 4,
           background: "#FFFFFF",
-          padding: "18px 20px",
+          padding: "16px 18px",
           marginBottom: 14,
         }}
       >
@@ -236,21 +236,21 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
             style={{
               display: "flex",
               justifyContent: m.role === "user" ? "flex-end" : "flex-start",
-              marginBottom: 16,
+              marginBottom: 14,
             }}
           >
             <div
               style={{
                 maxWidth: "85%",
-                padding: "10px 15px",
-                borderRadius: 8,
-                background: m.role === "user" ? INK : PAPER,
-                color: m.role === "user" ? "#FFFFFF" : "#2E3440",
+                padding: "10px 14px",
+                borderRadius: 4,
+                background: m.role === "user" ? "#162032" : "#F8F6F0",
+                color: m.role === "user" ? "#FFFFFF" : INK,
                 fontFamily: sans,
-                fontSize: 13.5,
+                fontSize: 13,
                 lineHeight: 1.55,
                 whiteSpace: "pre-wrap",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                border: m.role === "user" ? "none" : `1px solid ${RULE}`,
               }}
             >
               <div>{m.text}</div>

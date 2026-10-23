@@ -102,9 +102,9 @@ export default function Details({
           gap: 6,
           background: "none",
           border: "none",
-          color: "#5C6B84",
+          color: "#64748B",
           fontFamily: sans,
-          fontSize: 13.5,
+          fontSize: 13,
           cursor: "pointer",
           marginBottom: 16,
           padding: 0,
@@ -121,16 +121,18 @@ export default function Details({
           alignItems: "flex-start",
           gap: 20,
           flexWrap: "wrap",
+          paddingBottom: 18,
+          borderBottom: `1px solid ${RULE}`,
         }}
       >
         <div style={{ flex: 1, minWidth: 280 }}>
           <div
             style={{
               fontFamily: sans,
-              fontSize: 12,
+              fontSize: 11.5,
               color: SEAL,
               letterSpacing: 0.5,
-              fontWeight: 700,
+              fontWeight: 600,
               textTransform: "uppercase",
               marginBottom: 4,
             }}
@@ -141,21 +143,62 @@ export default function Details({
             <h2
               style={{
                 fontFamily: serif,
-                fontSize: 28,
+                fontSize: 26,
                 color: INK,
                 margin: 0,
-                lineHeight: 1.2,
+                lineHeight: 1.25,
               }}
             >
               {scheme.name}
             </h2>
             <VoiceReader text={speechContent} lang={lang} label={t.listen} />
           </div>
+
+          {/* Quick Parameters Tags */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 12px 0" }}>
+            <span
+              style={{
+                fontSize: 11.5,
+                background: "#F8F6F0",
+                border: `1px solid ${RULE}`,
+                padding: "2px 8px",
+                borderRadius: 4,
+                color: "#475569",
+              }}
+            >
+              Scheme Code: <strong>{scheme.id}</strong>
+            </span>
+            <span
+              style={{
+                fontSize: 11.5,
+                background: "#F8F6F0",
+                border: `1px solid ${RULE}`,
+                padding: "2px 8px",
+                borderRadius: 4,
+                color: "#475569",
+              }}
+            >
+              Max Funding: <strong>₹{(scheme.maxReq || 500000).toLocaleString("en-IN")}</strong>
+            </span>
+            <span
+              style={{
+                fontSize: 11.5,
+                background: "#F8F6F0",
+                border: `1px solid ${RULE}`,
+                padding: "2px 8px",
+                borderRadius: 4,
+                color: "#475569",
+              }}
+            >
+              Target: <strong>{scheme.targetGroup || "Marginalized Entrepreneurs"}</strong>
+            </span>
+          </div>
+
           <p
             style={{
               fontFamily: sans,
-              fontSize: 14,
-              color: "#454B58",
+              fontSize: 13.5,
+              color: "#475569",
               lineHeight: 1.6,
               margin: 0,
             }}
@@ -167,8 +210,24 @@ export default function Details({
         <ScoreBadge score={score} size="lg" />
       </div>
 
+      {/* Official Advisory Notice */}
+      <div
+        style={{
+          marginTop: 14,
+          padding: "10px 14px",
+          background: "#F8F6F0",
+          border: `1px solid ${RULE}`,
+          borderRadius: 4,
+          fontSize: 12,
+          color: "#475569",
+          lineHeight: 1.5,
+        }}
+      >
+        <strong>Official Advisory:</strong> Scheme parameters are codified from official notifications of the {scheme.ministry}. The match score evaluates baseline alignment with published eligibility rules. Final sanction and subsidy disbursement are subject to institutional verification and approval by the designated lending branch.
+      </div>
+
       {/* Action shortcuts / Redirection Buttons */}
-      <div style={{ marginTop: 20, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         {/* Fast-Track Apply & Track Progress Button */}
         <button
           type="button"
@@ -177,22 +236,21 @@ export default function Details({
             display: "inline-flex",
             alignItems: "center",
             gap: 8,
-            padding: "10px 18px",
-            background: "#1E3A8A",
+            padding: "9px 16px",
+            background: "#162032",
             color: "#FFFFFF",
             borderRadius: 4,
             fontFamily: sans,
-            fontSize: 13.5,
-            fontWeight: 700,
+            fontSize: 13,
+            fontWeight: 600,
             border: "none",
-            boxShadow: "0 2px 5px rgba(30, 58, 138, 0.35)",
             cursor: "pointer",
             transition: "all 0.15s ease",
           }}
-          onMouseOver={(e) => (e.currentTarget.style.background = "#172554")}
-          onMouseOut={(e) => (e.currentTarget.style.background = "#1E3A8A")}
+          onMouseOver={(e) => (e.currentTarget.style.background = "#0F172A")}
+          onMouseOut={(e) => (e.currentTarget.style.background = "#162032")}
         >
-          <Sparkles size={15} color="#FBBF24" />
+          <Sparkles size={14} color="#D97706" />
           <span>Apply Online &amp; Track Status</span>
         </button>
 
@@ -206,20 +264,19 @@ export default function Details({
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              padding: "10px 18px",
+              padding: "9px 16px",
               background: SEAL,
               color: "#FFFFFF",
               borderRadius: 4,
               fontFamily: sans,
-              fontSize: 13.5,
+              fontSize: 13,
               fontWeight: 600,
               textDecoration: "none",
-              boxShadow: "0 2px 4px rgba(181, 101, 29, 0.25)",
               cursor: "pointer",
             }}
           >
             <span>{t.applyPortalBtn}</span>
-            <ExternalLink size={15} />
+            <ExternalLink size={14} />
           </a>
         )}
 
@@ -231,7 +288,7 @@ export default function Details({
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              padding: "10px 14px",
+              padding: "9px 13px",
               background: "#FFFFFF",
               border: `1px solid ${RULE}`,
               borderRadius: 4,
@@ -255,9 +312,9 @@ export default function Details({
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              padding: "10px 16px",
-              background: "#F6F1E5",
-              border: `1px solid ${SEAL}`,
+              padding: "9px 14px",
+              background: "#F8F6F0",
+              border: `1px solid ${RULE}`,
               color: INK,
               borderRadius: 4,
               fontFamily: sans,
@@ -266,7 +323,7 @@ export default function Details({
               cursor: "pointer",
             }}
           >
-            <Printer size={15} color={SEAL} />
+            <Printer size={14} color={SEAL} />
             <span>{t.cscSlipBtn}</span>
           </button>
         )}
@@ -279,7 +336,7 @@ export default function Details({
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              padding: "10px 16px",
+              padding: "9px 14px",
               background: "#FFFFFF",
               border: `1px solid ${RULE}`,
               color: INK,
@@ -301,20 +358,20 @@ export default function Details({
         <div
           style={{
             marginTop: 10,
-            padding: "8px 14px",
-            background: "#F7F3E9",
+            padding: "8px 12px",
+            background: "#F8F6F0",
             borderRadius: 4,
             border: `1px solid ${RULE}`,
             fontFamily: sans,
             fontSize: 12,
-            color: "#6B7280",
+            color: "#64748B",
             display: "flex",
             alignItems: "center",
             gap: 8,
             overflowX: "auto",
           }}
         >
-          <span style={{ fontWeight: 600, color: INK, flexShrink: 0 }}>Verified URL:</span>
+          <span style={{ fontWeight: 600, color: INK, flexShrink: 0 }}>Official Portal Link:</span>
           <a
             href={scheme.portalUrl}
             target="_blank"
@@ -328,15 +385,15 @@ export default function Details({
 
       {/* SECTION: WHY YOU QUALIFY */}
       <div style={{ marginTop: 24 }}>
-        <h3 style={{ fontFamily: serif, fontSize: 18, color: INK, margin: "0 0 12px" }}>
+        <h3 style={{ fontFamily: serif, fontSize: 18, color: INK, margin: "0 0 10px" }}>
           {t.whyMatch}
         </h3>
         <div
           style={{
-            background: CARD,
+            background: "#FFFFFF",
             border: `1px solid ${RULE}`,
-            borderRadius: 6,
-            padding: "16px 20px",
+            borderRadius: 4,
+            padding: "16px 18px",
           }}
         >
           {reasons.green.map((r, i) => (
@@ -348,7 +405,7 @@ export default function Details({
                 gap: 10,
                 marginBottom: 8,
                 fontFamily: sans,
-                fontSize: 13.5,
+                fontSize: 13,
                 color: INK,
               }}
             >
@@ -380,7 +437,7 @@ export default function Details({
       {/* SECTION: FINANCIAL BENEFITS */}
       <div style={{ marginTop: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <Gift size={18} color={SEAL} />
+          <Gift size={17} color={SEAL} />
           <h3 style={{ fontFamily: serif, fontSize: 18, color: INK, margin: 0 }}>
             {t.benefitsTitle}
           </h3>
@@ -389,10 +446,10 @@ export default function Details({
           style={{
             background: "#FFFFFF",
             border: `1px solid ${RULE}`,
-            borderRadius: 6,
-            padding: "16px 20px",
+            borderRadius: 4,
+            padding: "16px 18px",
             fontFamily: sans,
-            fontSize: 14,
+            fontSize: 13.5,
             color: INK,
             lineHeight: 1.6,
           }}
@@ -405,15 +462,15 @@ export default function Details({
       <div style={{ marginTop: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <FileText size={18} color={SEAL} />
+            <FileText size={17} color={SEAL} />
             <h3 style={{ fontFamily: serif, fontSize: 18, color: INK, margin: 0 }}>
               {t.documentsTitle}
             </h3>
           </div>
-          <span style={{ fontFamily: sans, fontSize: 12, color: "#6B7280" }}>
+          <span style={{ fontFamily: sans, fontSize: 12, color: "#64748B" }}>
             {documents.length > 0
-              ? `${documents.filter((d) => isDocUploaded(d.name)).length} of ${scheme.documents.length} verified`
-              : "Upload in Document Vault for instant verification"}
+              ? `${documents.filter((d) => isDocUploaded(d.name)).length} of ${scheme.documents.length} attached`
+              : "Upload in Document Vault for application bundle"}
           </span>
         </div>
 
@@ -421,11 +478,11 @@ export default function Details({
           style={{
             background: "#FFFFFF",
             border: `1px solid ${RULE}`,
-            borderRadius: 6,
-            padding: "16px 20px",
+            borderRadius: 4,
+            padding: "14px 18px",
           }}
         >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
             {scheme.documents.map((doc, idx) => {
               const uploaded = isDocUploaded(doc);
               return (
@@ -435,20 +492,20 @@ export default function Details({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    padding: "6px 0",
-                    borderBottom: idx !== scheme.documents.length - 1 ? `1px dashed ${RULE}` : "none",
+                    padding: "8px 0",
+                    borderBottom: idx !== scheme.documents.length - 1 ? `1px solid #F1ECE1` : "none",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div
                       style={{
-                        width: 8,
-                        height: 8,
+                        width: 7,
+                        height: 7,
                         borderRadius: "50%",
-                        background: uploaded ? OK : SEAL,
+                        background: uploaded ? OK : "#94A3B8",
                       }}
                     />
-                    <span style={{ fontFamily: sans, fontSize: 13.5, color: INK }}>
+                    <span style={{ fontFamily: sans, fontSize: 13, color: INK }}>
                       {doc}
                     </span>
                   </div>
@@ -458,41 +515,47 @@ export default function Details({
                         fontFamily: sans,
                         fontSize: 11.5,
                         color: OK,
-                        fontWeight: 700,
+                        fontWeight: 600,
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 4,
+                        background: "#F0FDF4",
+                        padding: "2px 8px",
+                        borderRadius: 3,
+                        border: "1px solid #BBF7D0",
                       }}
                     >
-                      <CheckCircle2 size={13} color={OK} />
-                      Verified
+                      <CheckCircle2 size={12} color={OK} />
+                      Attached (Awaiting Due Diligence)
                     </span>
                   ) : (
-                    <span style={{ fontFamily: sans, fontSize: 11.5, color: "#8A8266" }}>
-                      Required at bank
+                    <span style={{ fontFamily: sans, fontSize: 11.5, color: "#64748B" }}>
+                      Required at Bank
                     </span>
                   )}
                 </div>
               );
             })}
           </div>
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed #E2DCCF", fontSize: 11.5, color: "#64748B" }}>
+            * Original physical certificates must be presented at the implementing bank branch during personal appraisal.
+          </div>
         </div>
       </div>
-
       {/* SECTION: STEP-BY-STEP WORKFLOW */}
       <div style={{ marginTop: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <ListOrdered size={18} color={SEAL} />
+          <ListOrdered size={17} color={SEAL} />
           <h3 style={{ fontFamily: serif, fontSize: 18, color: INK, margin: 0 }}>
             {t.workflowTitle}
           </h3>
         </div>
         <div
           style={{
-            background: CARD,
+            background: "#FFFFFF",
             border: `1px solid ${RULE}`,
-            borderRadius: 6,
-            padding: "16px 20px",
+            borderRadius: 4,
+            padding: "16px 18px",
           }}
         >
           {defaultSteps.map((step, idx) => (
@@ -510,21 +573,21 @@ export default function Details({
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: 22,
-                  height: 22,
-                  borderRadius: "50%",
-                  background: INK,
+                  width: 20,
+                  height: 20,
+                  borderRadius: 3,
+                  background: "#162032",
                   color: "#FFFFFF",
                   fontFamily: sans,
                   fontSize: 11,
-                  fontWeight: 700,
+                  fontWeight: 600,
                   flexShrink: 0,
                   marginTop: 1,
                 }}
               >
                 {idx + 1}
               </span>
-              <span style={{ fontFamily: sans, fontSize: 13.5, color: INK, lineHeight: 1.5 }}>
+              <span style={{ fontFamily: sans, fontSize: 13, color: INK, lineHeight: 1.5 }}>
                 {step}
               </span>
             </div>
@@ -536,11 +599,11 @@ export default function Details({
       {onAskAssistant && (
         <div
           style={{
-            marginTop: 28,
-            background: "#F6F1E5",
-            border: `1px solid ${SEAL}`,
-            borderRadius: 6,
-            padding: "16px 20px",
+            marginTop: 24,
+            background: "#F8F6F0",
+            border: `1px solid ${RULE}`,
+            borderRadius: 4,
+            padding: "14px 18px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -549,11 +612,11 @@ export default function Details({
           }}
         >
           <div>
-            <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 700, color: INK }}>
-              Have questions about this scheme?
+            <div style={{ fontFamily: sans, fontSize: 13.5, fontWeight: 600, color: INK }}>
+              Questions about this scheme's rules or requirements?
             </div>
-            <div style={{ fontFamily: sans, fontSize: 12.5, color: "#6B7280" }}>
-              Ask our grounded AI Assistant about subsidy calculations, documents, or bank rules.
+            <div style={{ fontFamily: sans, fontSize: 12, color: "#64748B", marginTop: 2 }}>
+              Ask the grounded AI Scheme Assistant for subsidy formulas, document checklists, and eligibility rules.
             </div>
           </div>
           <button
@@ -563,19 +626,19 @@ export default function Details({
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              padding: "8px 16px",
-              background: INK,
+              padding: "7px 14px",
+              background: "#162032",
               color: "#FFFFFF",
               border: "none",
               borderRadius: 4,
               fontFamily: sans,
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            <MessageCircle size={15} />
-            <span>Ask AI Assistant</span>
+            <MessageCircle size={14} />
+            <span>Consult Assistant</span>
           </button>
         </div>
       )}
@@ -589,8 +652,8 @@ export default function Details({
             left: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
+            background: "rgba(15, 23, 42, 0.5)",
+            backdropFilter: "blur(2px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -602,31 +665,31 @@ export default function Details({
           <div
             style={{
               background: "#FFFFFF",
-              border: `1.5px solid ${SEAL}`,
-              borderRadius: 8,
-              padding: "24px 26px",
-              maxWidth: 580,
+              border: `1px solid ${RULE}`,
+              borderRadius: 4,
+              padding: "24px",
+              maxWidth: 560,
               width: "100%",
               maxHeight: "90vh",
               overflowY: "auto",
-              boxShadow: "0 12px 36px rgba(0, 0, 0, 0.25)",
+              boxShadow: "0 10px 25px rgba(22, 32, 50, 0.15)",
               fontFamily: sans,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8, color: SEAL, marginBottom: 4 }}>
-              <ShieldCheck size={18} />
-              <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5 }}>
-                OFFICIAL CITIZEN APPLICATION SUBMISSION
+              <ShieldCheck size={16} />
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>
+                CITIZEN APPLICATION REGISTRATION
               </span>
             </div>
 
-            <h3 style={{ fontFamily: serif, fontSize: 22, color: INK, margin: "0 0 4px 0", fontWeight: 700 }}>
+            <h3 style={{ fontFamily: serif, fontSize: 20, color: INK, margin: "0 0 6px 0", fontWeight: 700 }}>
               Apply for {scheme.name.split("—")[0].trim()}
             </h3>
 
-            <p style={{ fontSize: 13, color: "#606F7B", margin: "0 0 16px 0", lineHeight: 1.45 }}>
-              Confirm your verified citizen details below to register your application directly with the District Nodal Office and lead bank.
+            <p style={{ fontSize: 12.5, color: "#64748B", margin: "0 0 16px 0", lineHeight: 1.5 }}>
+              Register your scheme application portfolio to track verification stages, prepare lead bank documents, and schedule physical appraisal.
             </p>
 
             <form
@@ -674,16 +737,16 @@ export default function Details({
               {!currentUser ? (
                 <div
                   style={{
-                    background: "#FAF7EE",
-                    border: `1.5px solid ${SEAL}`,
-                    borderRadius: 6,
+                    background: "#F8F6F0",
+                    border: `1px solid ${RULE}`,
+                    borderRadius: 4,
                     padding: "12px 14px",
                     marginBottom: 14,
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: SEAL, letterSpacing: 0.5 }}>
-                      CITIZEN REGISTRATION / AADHAAR LINKING
+                    <span style={{ fontSize: 11, fontWeight: 700, color: SEAL, letterSpacing: 0.5 }}>
+                      CITIZEN IDENTIFICATION (AADHAAR / MOBILE)
                     </span>
                     <button
                       type="button"
@@ -701,7 +764,7 @@ export default function Details({
                         fontWeight: 600,
                       }}
                     >
-                      Sign In to Existing Account
+                      Sign In to Account
                     </button>
                   </div>
 
@@ -738,31 +801,31 @@ export default function Details({
               ) : (
                 <div
                   style={{
-                    background: "#F9F7F1",
+                    background: "#F8F6F0",
                     border: `1px solid ${RULE}`,
-                    borderRadius: 6,
+                    borderRadius: 4,
                     padding: "10px 14px",
                     marginBottom: 14,
-                    fontSize: 12.5,
+                    fontSize: 12,
                     display: "grid",
                     gridTemplateColumns: "1fr 1fr",
                     gap: 8,
                   }}
                 >
                   <div>
-                    <span style={{ color: "#6B7280" }}>Applicant:</span>{" "}
+                    <span style={{ color: "#64748B" }}>Applicant:</span>{" "}
                     <strong>{currentUser.name}</strong>
                   </div>
                   <div>
-                    <span style={{ color: "#6B7280" }}>Category:</span>{" "}
+                    <span style={{ color: "#64748B" }}>Category:</span>{" "}
                     <strong>{profile?.category || currentUser.categoryBadge || "General"}</strong>
                   </div>
                   <div>
-                    <span style={{ color: "#6B7280" }}>State:</span>{" "}
+                    <span style={{ color: "#64748B" }}>State:</span>{" "}
                     <strong>{profile?.state || "Uttar Pradesh"}</strong>
                   </div>
                   <div>
-                    <span style={{ color: "#6B7280" }}>Target Sector:</span>{" "}
+                    <span style={{ color: "#64748B" }}>Target Sector:</span>{" "}
                     <strong>{profile?.businessType || "Manufacturing"}</strong>
                   </div>
                 </div>
@@ -782,8 +845,8 @@ export default function Details({
                   style={inputStyle}
                   required
                 />
-                <span style={{ fontSize: 11, color: "#6B7280", marginTop: 3, display: "block" }}>
-                  Scheme limits: ₹{(scheme.minReq || 10000).toLocaleString("en-IN")} to ₹{(scheme.maxReq || 5000000).toLocaleString("en-IN")}
+                <span style={{ fontSize: 11, color: "#64748B", marginTop: 3, display: "block" }}>
+                  Official scheme limits: ₹{(scheme.minReq || 10000).toLocaleString("en-IN")} to ₹{(scheme.maxReq || 5000000).toLocaleString("en-IN")}
                 </span>
               </div>
 
@@ -826,13 +889,13 @@ export default function Details({
               {/* Attached Documents Notice */}
               <div
                 style={{
-                  background: "#E8F5E9",
-                  border: `1px solid ${OK}`,
-                  borderRadius: 6,
+                  background: "#F0FDF4",
+                  border: `1px solid #BBF7D0`,
+                  borderRadius: 4,
                   padding: "10px 12px",
                   fontSize: 12,
-                  color: OK,
-                  marginBottom: 16,
+                  color: "#166534",
+                  marginBottom: 14,
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
@@ -840,8 +903,13 @@ export default function Details({
               >
                 <CheckCircle2 size={16} />
                 <span>
-                  <strong>{documents.length > 0 ? `${documents.length} Verified Documents` : "Aadhaar e-KYC"}</strong> will be automatically attached from your Digital Document Vault.
+                  <strong>{documents.length > 0 ? `${documents.length} Document(s) in Vault` : "Aadhaar e-KYC"}</strong> will be linked to this application portfolio.
                 </span>
+              </div>
+
+              {/* Statutory Disclaimer */}
+              <div style={{ fontSize: 11, color: "#64748B", marginBottom: 16, lineHeight: 1.4 }}>
+                * Registration records your application portfolio on this platform. Final sanction and credit disbursement are strictly dependent upon personal branch inspection and document verification.
               </div>
 
               {/* Modal Buttons */}
@@ -850,12 +918,12 @@ export default function Details({
                   type="button"
                   onClick={() => setIsApplyModalOpen(false)}
                   style={{
-                    padding: "9px 16px",
+                    padding: "8px 14px",
                     background: "#FFFFFF",
                     border: `1px solid ${RULE}`,
                     color: INK,
                     borderRadius: 4,
-                    fontSize: 13,
+                    fontSize: 12.5,
                     cursor: "pointer",
                   }}
                 >
@@ -869,19 +937,18 @@ export default function Details({
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 6,
-                    padding: "9px 20px",
+                    padding: "8px 18px",
                     background: SEAL,
                     color: "#FFFFFF",
                     border: "none",
                     borderRadius: 4,
-                    fontSize: 13.5,
-                    fontWeight: 700,
+                    fontSize: 13,
+                    fontWeight: 600,
                     cursor: "pointer",
-                    boxShadow: "0 2px 4px rgba(181, 101, 29, 0.25)",
                   }}
                 >
-                  <Sparkles size={15} color="#FFFFFF" />
-                  <span>{isSubmittingApp ? "Submitting to Nodal Portal..." : "Confirm & Submit Application"}</span>
+                  <Sparkles size={14} color="#FFFFFF" />
+                  <span>{isSubmittingApp ? "Registering Application..." : "Confirm & Register Application"}</span>
                 </button>
               </div>
             </form>
