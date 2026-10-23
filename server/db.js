@@ -770,15 +770,25 @@ export function saveAssessment({
   topSchemeName = null,
   topScore = 0,
   resultsSummary = [],
+  ruleVersion = "v2.0-deterministic-574",
+  totalEvaluated = 574,
+  eligibleCount = 0,
+  potentiallyEligibleCount = 0,
+  notEligibleCount = 0,
+  criterionResults = null,
 }) {
   const assessmentId = id || `asm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const stmt = db.prepare(`
     INSERT INTO assessments (
       id, user_id, profile_snapshot, matched_schemes_count,
-      top_scheme_id, top_scheme_name, top_score, results_summary
+      top_scheme_id, top_scheme_name, top_score, results_summary,
+      rule_version, total_evaluated, eligible_count,
+      potentially_eligible_count, not_eligible_count, criterion_results
     ) VALUES (
       @id, @user_id, @profile_snapshot, @matched_schemes_count,
-      @top_scheme_id, @top_scheme_name, @top_score, @results_summary
+      @top_scheme_id, @top_scheme_name, @top_score, @results_summary,
+      @rule_version, @total_evaluated, @eligible_count,
+      @potentially_eligible_count, @not_eligible_count, @criterion_results
     )
   `);
 
@@ -791,6 +801,12 @@ export function saveAssessment({
     top_scheme_name: topSchemeName || null,
     top_score: Number(topScore) || 0,
     results_summary: typeof resultsSummary === "string" ? resultsSummary : JSON.stringify(resultsSummary),
+    rule_version: ruleVersion,
+    total_evaluated: Number(totalEvaluated) || 574,
+    eligible_count: Number(eligibleCount) || 0,
+    potentially_eligible_count: Number(potentiallyEligibleCount) || 0,
+    not_eligible_count: Number(notEligibleCount) || 0,
+    criterion_results: criterionResults ? (typeof criterionResults === "string" ? criterionResults : JSON.stringify(criterionResults)) : null,
   });
 
   if (userId) {
@@ -799,7 +815,7 @@ export function saveAssessment({
       action: "ASSESSMENT_RUN",
       resourceType: "assessment",
       resourceId: assessmentId,
-      details: { topSchemeId, topScore, matchedCount: matchedSchemesCount },
+      details: { topSchemeId, topScore, matchedCount: matchedSchemesCount, eligibleCount, ruleVersion },
     });
   }
 
@@ -1032,6 +1048,10 @@ function formatAppRow(r) {
 }
 
 function formatAssessmentRow(r) {
+  let criterionResults = null;
+  try {
+    criterionResults = r.criterion_results ? JSON.parse(r.criterion_results) : null;
+  } catch {}
   return {
     id: r.id,
     userId: r.user_id,
@@ -1041,6 +1061,12 @@ function formatAssessmentRow(r) {
     topSchemeName: r.top_scheme_name,
     topScore: r.top_score,
     resultsSummary: r.results_summary ? JSON.parse(r.results_summary) : [],
+    ruleVersion: r.rule_version || "v2.0-deterministic-574",
+    totalEvaluated: r.total_evaluated || 574,
+    eligibleCount: r.eligible_count || 0,
+    potentiallyEligibleCount: r.potentially_eligible_count || 0,
+    notEligibleCount: r.not_eligible_count || 0,
+    criterionResults,
     createdAt: r.created_at,
   };
 }
@@ -1063,6 +1089,8 @@ export function formatSchemeRow(s) {
     businessTypes: s.business_types ? JSON.parse(s.business_types) : [],
     minReq: s.min_req,
     maxReq: s.max_req,
+    criteriaCompleteness: s.criteria_completeness || "verified",
+    verificationNotes: s.verification_notes || "",
     benefits: s.benefits,
     documents: s.documents ? JSON.parse(s.documents) : [],
     applicationSteps: s.application_steps ? JSON.parse(s.application_steps) : [],

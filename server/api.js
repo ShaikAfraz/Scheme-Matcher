@@ -130,6 +130,10 @@ function generateGroundedFallback({ question = "", profile = {}, matches = [] })
   const top = matches[0] || null;
   const topName = top ? (top.scheme?.name || top.scheme_name) : "Government Welfare Schemes";
   const topScore = top ? (top.score ?? top.match_score ?? 0) : 0;
+  const topStatus = top ? (top.eligibilityStatus || (top.isEligible ? "Eligible" : "Potentially Eligible")) : "Under Review";
+  const portalUrl = top?.scheme?.portalUrl || top?.scheme?.portal_url || top?.scheme?.source_url || "https://myscheme.gov.in";
+
+  const statutoryDisclaimer = "\n\n*Statutory Notice: All recommendations are grounded in database parameters. Final approval and benefit sanction belong exclusively to the competent government department or financing bank upon physical document scrutiny.*";
 
   if (q.includes("document") || q.includes("certificate") || q.includes("paper")) {
     const docs = top?.scheme?.documents || [
@@ -138,17 +142,26 @@ function generateGroundedFallback({ question = "", profile = {}, matches = [] })
       "Family Income Certificate",
       "Project Report (DPR)",
     ];
-    return `For ${topName}, the primary required documents are:\n` +
+    return `For **${topName}** (Status: **${topStatus}**), the primary required documents are:\n` +
       docs.map((d) => `• ${d}`).join("\n") +
-      "\n\nPlease ensure your caste and family income certificates are issued within the last 12 months by an authorized revenue official (Tehsildar / SDM).";
+      "\n\nPlease ensure your caste and family income certificates are issued within the last 12 months by an authorized revenue official (Tehsildar / SDM)." +
+      `\nOfficial Application Portal: ${portalUrl}` +
+      statutoryDisclaimer;
   }
 
-  if (q.includes("subsidy") || q.includes("margin") || q.includes("loan")) {
+  if (q.includes("subsidy") || q.includes("margin") || q.includes("loan") || q.includes("benefit")) {
     const benefits = top?.scheme?.benefits || "Government financial subsidy and bank credit linkage";
-    return `Under ${topName}, the financial benefit structure is:\n${benefits}\n\nNote that government subsidies are back-ended and credited via DBT after bank verification.`;
+    return `Under **${topName}**, the official benefit structure is:\n${benefits}\n\nNote that government subsidies are back-ended and credited via DBT after bank verification.` +
+      `\nOfficial Application Portal: ${portalUrl}` +
+      statutoryDisclaimer;
   }
 
-  return `Based on your submitted profile (${profile.age || 28}yo, ${profile.category || "General"} category), your top matching opportunity is ${topName} with a suitability score of ${topScore}%.\n\nPlease verify your caste and annual income certificates with your district administration before applying.`;
+  return `Based on your submitted profile (${profile.age || 28}yo, ${profile.category || "General"} category), your top evaluated program is **${topName}**.\n` +
+    `• Eligibility Status: **${topStatus}**\n` +
+    `• Relevance Match Score: **${topScore}/100**\n` +
+    `• Implementing Authority: **${top?.scheme?.ministry || "Government of India"}**\n` +
+    `• Official Application Portal: ${portalUrl}` +
+    statutoryDisclaimer;
 }
 
 export function createDatabaseApiMiddleware() {
@@ -872,6 +885,12 @@ export function createDatabaseApiMiddleware() {
           topSchemeName: body.topSchemeName || null,
           topScore: body.topScore || 0,
           resultsSummary: body.resultsSummary || body.results || [],
+          ruleVersion: body.ruleVersion || body.rule_version || "v2.0-deterministic-574",
+          totalEvaluated: body.totalEvaluated || body.total_evaluated || 574,
+          eligibleCount: body.eligibleCount || body.eligible_count || 0,
+          potentiallyEligibleCount: body.potentiallyEligibleCount || body.potentially_eligible_count || 0,
+          notEligibleCount: body.notEligibleCount || body.not_eligible_count || 0,
+          criterionResults: body.criterionResults || body.criterion_results || null,
         });
 
         return sendJson(res, 201, {
@@ -1146,12 +1165,14 @@ export function createDatabaseApiMiddleware() {
             }));
 
             const systemPrompt =
-              "You are the official AI Assistant for the 'AI-Driven Scheme Matching Platform for Marginalized Entrepreneurs' (SIH26092, Ministry of Social Justice & Empowerment).\n" +
-              "Answer questions grounded strictly in the pre-computed matches and user profile provided below.\n" +
-              "CRITICAL RULES:\n" +
-              "1. You DO NOT invent or calculate new eligibility — you explain the pre-computed deterministic results.\n" +
-              "2. You NEVER claim guaranteed approval or sanction from any government body.\n" +
-              "3. Speak in empathetic, clear, plain language, avoiding bureaucratic jargon.\n" +
+              "You are the official AI Assistant for the 'AI-Driven Scheme Matching Platform' (Ministry of Social Justice & Empowerment).\n" +
+              "Answer questions grounded strictly and exclusively in the pre-computed scheme criteria and user profile provided below.\n" +
+              "CRITICAL ARCHITECTURAL RULES:\n" +
+              "1. NEVER invent scheme benefits, application deadlines, eligibility criteria, or official sources.\n" +
+              "2. Explain eligibility through the 3 canonical statuses: Eligible, Potentially Eligible, and Not Eligible.\n" +
+              "3. Clarify that match scores (0-100) indicate relevance and never override failed mandatory criteria.\n" +
+              "4. ALWAYS state that final approval and benefit sanction belong exclusively to the competent departmental authority / financing bank upon physical document scrutiny.\n" +
+              "5. Provide official application portal links directly from the stored scheme data.\n" +
               "User Profile: " + JSON.stringify(profile) + "\n\n" +
               "Pre-computed Matches: " + JSON.stringify(context);
 

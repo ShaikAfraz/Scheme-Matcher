@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import {
   CheckCircle2,
   AlertTriangle,
+  XCircle,
   ArrowRight,
   Search,
   Printer,
@@ -61,6 +62,8 @@ export default function Results({
   bookmarks = [],
   onToggleBookmark = null,
 }) {
+  const [statusFilter, setStatusFilter] = useState("all"); // "all" | "eligible" | "potentially_eligible" | "not_eligible" | "bookmarked"
+  const [expandedCriteria, setExpandedCriteria] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [tierFilter, setTierFilter] = useState("all"); // "all" | "high" | "moderate" | "gap"
   const [levelFilter, setLevelFilter] = useState("all"); // "all" | "central" | "state"
@@ -70,7 +73,41 @@ export default function Results({
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
+  const toggleCriteria = (schemeId) => {
+    setExpandedCriteria((prev) => ({
+      ...prev,
+      [schemeId]: !prev[schemeId],
+    }));
+  };
+
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+
+  // Dynamic counts for canonical eligibility statuses
+  const statusCounts = useMemo(() => {
+    let eligible = 0;
+    let potentiallyEligible = 0;
+    let notEligible = 0;
+    let bookmarkedCount = 0;
+    for (const m of matches) {
+      const status =
+        m.eligibilityStatus ||
+        (m.isEligible ? "Eligible" : m.isNotEligible ? "Not Eligible" : "Potentially Eligible");
+      if (status === "Eligible") eligible++;
+      else if (status === "Potentially Eligible") potentiallyEligible++;
+      else notEligible++;
+
+      if ((bookmarks || []).some((b) => (b.scheme?.id || b.schemeId) === m.scheme.id)) {
+        bookmarkedCount++;
+      }
+    }
+    return {
+      all: matches.length,
+      eligible,
+      potentiallyEligible,
+      notEligible,
+      bookmarked: bookmarkedCount,
+    };
+  }, [matches, bookmarks]);
 
   // Collect unique states from all matched schemes for dropdown
   const availableStates = useMemo(() => {
@@ -112,6 +149,10 @@ export default function Results({
   }, [matches]);
 
   // Reset page when filters change
+  const handleStatusChange = (val) => {
+    setStatusFilter(val);
+    setCurrentPage(1);
+  };
   const handleSearchChange = (val) => {
     setSearchTerm(val);
     setCurrentPage(1);
@@ -140,6 +181,30 @@ export default function Results({
   // Filter and sort matches
   const filteredMatches = useMemo(() => {
     let result = [...matches];
+
+    // Canonical Eligibility Status filter
+    if (statusFilter === "eligible") {
+      result = result.filter(
+        (m) =>
+          (m.eligibilityStatus || (m.isEligible ? "Eligible" : "Potentially Eligible")) === "Eligible"
+      );
+    } else if (statusFilter === "potentially_eligible") {
+      result = result.filter(
+        (m) =>
+          (m.eligibilityStatus || (m.isPotentiallyEligible ? "Potentially Eligible" : "Eligible")) ===
+          "Potentially Eligible"
+      );
+    } else if (statusFilter === "not_eligible") {
+      result = result.filter(
+        (m) =>
+          (m.eligibilityStatus || (m.isNotEligible ? "Not Eligible" : "Potentially Eligible")) ===
+          "Not Eligible"
+      );
+    } else if (statusFilter === "bookmarked") {
+      result = result.filter((m) =>
+        (bookmarks || []).some((b) => (b.scheme?.id || b.schemeId) === m.scheme.id)
+      );
+    }
 
     // Search query filter
     if (searchTerm.trim()) {
@@ -523,6 +588,115 @@ export default function Results({
           boxShadow: "0 1px 3px rgba(18, 25, 38, 0.03)",
         }}
       >
+        {/* Primary Eligibility Status Navigation Tabs */}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            marginBottom: 16,
+            borderBottom: `1px solid ${RULE_LIGHT}`,
+            paddingBottom: 14,
+          }}
+        >
+          {[
+            {
+              id: "all",
+              label: "All Schemes",
+              count: statusCounts.all,
+              color: INK,
+              activeBg: INK,
+              activeText: "#FFFFFF",
+              border: RULE,
+            },
+            {
+              id: "eligible",
+              label: "Eligible (Verified)",
+              count: statusCounts.eligible,
+              color: "#059669",
+              activeBg: "#059669",
+              activeText: "#FFFFFF",
+              border: "#10B981",
+              icon: <CheckCircle2 size={13} />,
+            },
+            {
+              id: "potentially_eligible",
+              label: "Potentially Eligible",
+              count: statusCounts.potentiallyEligible,
+              color: "#D97706",
+              activeBg: "#D97706",
+              activeText: "#FFFFFF",
+              border: "#F59E0B",
+              icon: <AlertTriangle size={13} />,
+            },
+            {
+              id: "not_eligible",
+              label: "Not Eligible",
+              count: statusCounts.notEligible,
+              color: "#DC2626",
+              activeBg: "#DC2626",
+              activeText: "#FFFFFF",
+              border: "#EF4444",
+              icon: <XCircle size={13} />,
+            },
+            ...(currentUser || (bookmarks && bookmarks.length > 0)
+              ? [
+                  {
+                    id: "bookmarked",
+                    label: "Saved Bookmarks",
+                    count: statusCounts.bookmarked,
+                    color: "#B45309",
+                    activeBg: "#B45309",
+                    activeText: "#FFFFFF",
+                    border: "#F59E0B",
+                    icon: <Bookmark size={13} />,
+                  },
+                ]
+              : []),
+          ].map((tab) => {
+            const active = statusFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleStatusChange(tab.id)}
+                style={{
+                  fontFamily: sans,
+                  fontSize: 13,
+                  padding: "7px 14px",
+                  borderRadius: 4,
+                  border: `1px solid ${active ? tab.activeBg : tab.border}`,
+                  background: active ? tab.activeBg : "#FFFFFF",
+                  color: active ? tab.activeText : tab.color,
+                  cursor: "pointer",
+                  fontWeight: active ? 700 : 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "all 0.15s ease",
+                  boxShadow: active ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                }}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    background: active ? "rgba(255,255,255,0.25)" : SURFACE_MUTED,
+                    color: active ? "#FFFFFF" : INK_MUTED,
+                    fontWeight: 700,
+                  }}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Search Input */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ position: "relative" }}>
@@ -854,9 +1028,29 @@ export default function Results({
             </button>
           </div>
         ) : (
-          paginatedMatches.map(({ scheme, score, reasons }, index) => {
-            const isHighMatch = score >= 70;
-            const isModerate = score >= 40 && score < 70;
+          paginatedMatches.map((matchItem, index) => {
+            const {
+              scheme,
+              score,
+              reasons,
+              eligibilityStatus,
+              isEligible,
+              isPotentiallyEligible,
+              isNotEligible,
+              passedCriteria = [],
+              failedCriteria = [],
+              missingInformation = [],
+              disqualifyingReasons = [],
+              criteriaAudit,
+            } = matchItem;
+
+            const status =
+              eligibilityStatus ||
+              (isEligible ? "Eligible" : isNotEligible ? "Not Eligible" : "Potentially Eligible");
+            const isStatusEligible = status === "Eligible";
+            const isStatusPotentially = status === "Potentially Eligible";
+            const isStatusNotEligible = status === "Not Eligible";
+
             const isBookmarked = (bookmarks || []).some(
               (b) => (b.scheme?.id || b.schemeId) === scheme.id
             );
@@ -869,6 +1063,8 @@ export default function Results({
               scheme.description.toLowerCase().includes("weaver");
 
             const globalIndex = (safeCurrentPage - 1) * pageSize + index + 1;
+            const isCriteriaOpen = Boolean(expandedCriteria[scheme.id]);
+            const portalLink = scheme.portalUrl || scheme.portal_url || scheme.source_url;
 
             return (
               <article
@@ -876,18 +1072,18 @@ export default function Results({
                 style={{
                   background: CARD,
                   border: `1px solid ${RULE}`,
-                  borderLeft: isHighMatch
-                    ? `4px solid ${OK}`
-                    : isModerate
-                    ? `4px solid ${VERIFY}`
-                    : `4px solid ${RULE}`,
+                  borderLeft: isStatusEligible
+                    ? `5px solid #10B981`
+                    : isStatusPotentially
+                    ? `5px solid #F59E0B`
+                    : `5px solid #EF4444`,
                   borderRadius: 4,
                   padding: "22px 26px",
                   boxShadow: "0 1px 3px rgba(18, 25, 38, 0.03)",
                   transition: "border-color 0.15s ease",
                 }}
               >
-                {/* Meta Header: Index, Scheme Code, Level, Verified, Ministry */}
+                {/* Meta Header: Index, Scheme Code, Level, Verified, Ministry, Status, and Score */}
                 <div
                   style={{
                     display: "flex",
@@ -956,7 +1152,7 @@ export default function Results({
                       }}
                     >
                       <ShieldCheck size={12} color="#059669" />
-                      <span>Verified Official Source</span>
+                      <span>Verified Source</span>
                     </span>
 
                     <span style={{ fontSize: 12, color: INK_LIGHT, fontWeight: 500 }}>
@@ -980,20 +1176,37 @@ export default function Results({
                     )}
                   </div>
 
-                  {/* Score Pill */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* Right Header: Canonical Eligibility Status Pill & Relevance Score */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <span
                       style={{
-                        fontSize: 11.5,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 12,
                         fontWeight: 700,
-                        color: isHighMatch ? OK : isModerate ? VERIFY : NO,
+                        color: isStatusEligible ? "#047857" : isStatusPotentially ? "#92400E" : "#B91C1C",
+                        background: isStatusEligible ? "#D1FAE5" : isStatusPotentially ? "#FEF3C7" : "#FEE2E2",
+                        border: `1px solid ${isStatusEligible ? "#6EE7B7" : isStatusPotentially ? "#FCD34D" : "#FCA5A5"}`,
+                        padding: "3px 9px",
+                        borderRadius: 4,
+                        letterSpacing: 0.4,
                         textTransform: "uppercase",
-                        letterSpacing: 0.5,
                       }}
                     >
-                      {isHighMatch ? "Strong Match" : isModerate ? "Partial Match" : "Criteria Gaps"}
+                      {isStatusEligible && <CheckCircle2 size={13} color="#059669" />}
+                      {isStatusPotentially && <AlertTriangle size={13} color="#D97706" />}
+                      {isStatusNotEligible && <XCircle size={13} color="#DC2626" />}
+                      <span>{status}</span>
                     </span>
-                    <ScoreBadge score={score} size="md" />
+
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 6 }}
+                      title="Relevance match score (0–100) calculated independently from mandatory eligibility rules"
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 600, color: INK_MUTED }}>Score:</span>
+                      <ScoreBadge score={score} size="md" />
+                    </div>
                   </div>
                 </div>
 
@@ -1122,67 +1335,147 @@ export default function Results({
                   </span>
                 </div>
 
-                {/* Reasons / Criteria Audit */}
+                {/* Criteria Checklist Toggle Drawer */}
                 <div
                   style={{
                     borderTop: `1px solid ${RULE_LIGHT}`,
                     paddingTop: 12,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    marginBottom: 16,
+                    marginBottom: 14,
                   }}
                 >
-                  {/* Matched Criteria */}
-                  {reasons.green && reasons.green.slice(0, 2).map((reason) => (
-                    <div
-                      key={reason}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleCriteria(scheme.id)}
                       style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 7,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        fontFamily: sans,
                         fontSize: 12.5,
-                        color: OK,
+                        fontWeight: 600,
+                        color: SEAL,
+                        cursor: "pointer",
                       }}
                     >
-                      <CheckCircle2 size={14} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span>{simplifyGovtText(reason, isPlainMode, lang)}</span>
-                    </div>
-                  ))}
-
-                  {/* Neutral / Unknown Criteria */}
-                  {reasons.yellow && reasons.yellow.slice(0, 1).map((reason) => (
-                    <div
-                      key={reason}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 7,
-                        fontSize: 12.5,
-                        color: "#B45309",
-                      }}
-                    >
-                      <Info size={14} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span>{simplifyGovtText(reason, isPlainMode, lang)}</span>
-                    </div>
-                  ))}
-
-                  {/* Criteria Gaps */}
-                  {reasons.red && reasons.red.length > 0 && (
-                    <div
-                      key={reasons.red[0]}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 7,
-                        fontSize: 12.5,
-                        color: NO,
-                      }}
-                    >
-                      <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
                       <span>
-                        Criteria Gap: {simplifyGovtText(reasons.red[0], isPlainMode, lang)}
+                        {isCriteriaOpen ? "▾ Hide Evaluated Criteria" : "▸ View Evaluated Criteria"} (
+                        {passedCriteria.length} Passed, {missingInformation.length} Missing,{" "}
+                        {failedCriteria.length} Excluded)
                       </span>
+                    </button>
+
+                    <span style={{ fontSize: 11.5, color: INK_LIGHT }}>
+                      Last Verified: October 2026 •{" "}
+                      {scheme.criteriaCompleteness === "requires_offline_verification" ||
+                      criteriaAudit?.completeness === "requires_offline_verification"
+                        ? "Requires Offline / Gazette Scrutiny"
+                        : "Deterministic Criteria Verified"}
+                    </span>
+                  </div>
+
+                  {isCriteriaOpen && (
+                    <div
+                      style={{
+                        background: SURFACE_MUTED,
+                        border: `1px solid ${RULE_LIGHT}`,
+                        borderRadius: 4,
+                        padding: "12px 14px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                        marginTop: 6,
+                      }}
+                    >
+                      {failedCriteria.length > 0 && (
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#DC2626",
+                              marginBottom: 4,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                            }}
+                          >
+                            <XCircle size={13} color="#DC2626" />
+                            <span>Reasons for Exclusion (Disqualifying Criteria):</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 18 }}>
+                            {failedCriteria.map((c, i) => (
+                              <div key={i} style={{ fontSize: 12, color: "#991B1B" }}>
+                                <strong>{c.label || c.criterion}:</strong> {c.detail}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {missingInformation.length > 0 && (
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#D97706",
+                              marginBottom: 4,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                            }}
+                          >
+                            <AlertTriangle size={13} color="#D97706" />
+                            <span>Missing Information / Offline Verification Required:</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 18 }}>
+                            {missingInformation.map((c, i) => (
+                              <div key={i} style={{ fontSize: 12, color: "#92400E" }}>
+                                <strong>{c.label || c.criterion}:</strong> {c.detail}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {passedCriteria.length > 0 && (
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#059669",
+                              marginBottom: 4,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                            }}
+                          >
+                            <CheckCircle2 size={13} color="#059669" />
+                            <span>Satisfied Criteria (Verified):</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 18 }}>
+                            {passedCriteria.map((c, i) => (
+                              <div key={i} style={{ fontSize: 12, color: "#065F46" }}>
+                                <strong>{c.label || c.criterion}:</strong> {c.detail}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1252,26 +1545,30 @@ export default function Results({
                     </button>
                   </div>
 
-                  {scheme.portalUrl && (
+                  {portalLink && (
                     <a
-                      href={scheme.portalUrl}
+                      href={portalLink}
                       target="_blank"
                       rel="noreferrer"
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: 5,
-                        color: INK_MUTED,
+                        gap: 6,
+                        padding: "7px 14px",
+                        background: "#EFF6FF",
+                        border: "1px solid #BFDBFE",
+                        borderRadius: 4,
+                        color: "#1D4ED8",
                         fontFamily: sans,
                         fontSize: 12.5,
                         textDecoration: "none",
-                        fontWeight: 500,
+                        fontWeight: 600,
                       }}
-                      onMouseOver={(e) => (e.currentTarget.style.color = INK)}
-                      onMouseOut={(e) => (e.currentTarget.style.color = INK_MUTED)}
+                      onMouseOver={(e) => (e.currentTarget.style.background = "#DBEAFE")}
+                      onMouseOut={(e) => (e.currentTarget.style.background = "#EFF6FF")}
                     >
-                      <ExternalLink size={13} color={SEAL} />
-                      <span>Official Ministry Portal</span>
+                      <span>Official Portal</span>
+                      <ExternalLink size={13} color="#1D4ED8" />
                     </a>
                   )}
                 </div>

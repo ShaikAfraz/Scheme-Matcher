@@ -146,6 +146,9 @@ describe("Scheme Database Expansion & Quality Assurance Suite", () => {
       isDnt: false,
     };
 
+    // JIT warm-up pass
+    matchSchemes(testProfile);
+
     const startTime = performance.now();
     const matches = matchSchemes(testProfile);
     const duration = performance.now() - startTime;

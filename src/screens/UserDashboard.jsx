@@ -64,6 +64,10 @@ export default function UserDashboard({
     financialRequirement: currentUser?.profileData?.financialRequirement || 250000,
     businessStatus: currentUser?.profileData?.businessStatus || "new",
     businessType: currentUser?.profileData?.businessType || "Manufacturing",
+    education: currentUser?.profileData?.education || "Graduate",
+    occupation: currentUser?.profileData?.occupation || "Other",
+    hasBplCard: !!currentUser?.profileData?.hasBplCard,
+    isTaxPayer: !!currentUser?.profileData?.isTaxPayer,
     isSafaiKaramchari: !!currentUser?.profileData?.isSafaiKaramchari,
     isDivyangjan: !!currentUser?.profileData?.isDivyangjan,
     isArtisan: !!currentUser?.profileData?.isArtisan,
@@ -99,6 +103,10 @@ export default function UserDashboard({
         financialRequirement: currentUser.profileData.financialRequirement || 250000,
         businessStatus: currentUser.profileData.businessStatus || "new",
         businessType: currentUser.profileData.businessType || "Manufacturing",
+        education: currentUser.profileData.education || "Graduate",
+        occupation: currentUser.profileData.occupation || "Other",
+        hasBplCard: !!currentUser.profileData.hasBplCard,
+        isTaxPayer: !!currentUser.profileData.isTaxPayer,
         isSafaiKaramchari: !!currentUser.profileData.isSafaiKaramchari,
         isDivyangjan: !!currentUser.profileData.isDivyangjan,
         isArtisan: !!currentUser.profileData.isArtisan,
@@ -562,6 +570,48 @@ export default function UserDashboard({
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 5 }}>
+                  Educational Qualification
+                </label>
+                <select
+                  value={profileForm.education || ""}
+                  onChange={(e) => setProfileForm({ ...profileForm, education: e.target.value })}
+                  style={inputStyle}
+                >
+                  <option value="">Select Qualification (Optional)</option>
+                  <option value="Below 10th">Below 10th Standard</option>
+                  <option value="10th Pass">10th Pass (Matriculation)</option>
+                  <option value="12th Pass">12th Pass (Higher Secondary)</option>
+                  <option value="ITI / Diploma">ITI / Polytechnic Diploma</option>
+                  <option value="Graduate">Graduate (B.A., B.Sc., B.Com, B.Tech)</option>
+                  <option value="Post Graduate">Post Graduate (M.A., M.Sc., M.Tech, etc.)</option>
+                  <option value="Doctorate">Doctorate / Ph.D. / Professional Degree</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 5 }}>
+                  Primary Occupation / Status
+                </label>
+                <select
+                  value={profileForm.occupation || ""}
+                  onChange={(e) => setProfileForm({ ...profileForm, occupation: e.target.value })}
+                  style={inputStyle}
+                >
+                  <option value="">Select Occupation (Optional)</option>
+                  <option value="Student">Student (Scholarships / Fellowships)</option>
+                  <option value="Farmer">Farmer / Cultivator / Dairy Producer</option>
+                  <option value="Artisan">Traditional Artisan / Handloom Weaver</option>
+                  <option value="Sanitation Worker">Sanitation Worker / Safai Karamchari</option>
+                  <option value="Street Vendor">Street Vendor / Urban Micro-hawker</option>
+                  <option value="Self-Employed">Self-Employed / Shop Owner</option>
+                  <option value="Unemployed">Unemployed / Job Seeker</option>
+                  <option value="Salaried">Salaried Employee (Public/Private)</option>
+                  <option value="Other">Other Livelihood</option>
+                </select>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 18 }}>
@@ -648,6 +698,44 @@ export default function UserDashboard({
                     <span>{label}</span>
                   </label>
                 ))}
+              </div>
+            </div>
+
+            {/* Statutory Exclusions & Welfare Ration Cards */}
+            <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 4, padding: 14, marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#92400E", marginBottom: 10 }}>
+                Statutory Exclusions &amp; Ration Cards (Required for Pension / Destitute Welfare Schemes)
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: INK, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={profileForm.hasBplCard}
+                    onChange={(e) => setProfileForm({ ...profileForm, hasBplCard: e.target.checked })}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    <strong>Hold valid BPL / Antyodaya Ration Card</strong>
+                    <div style={{ fontSize: 11.5, color: "#78350F" }}>
+                      Satisfies National Social Assistance &amp; subsidized food grain criteria.
+                    </div>
+                  </div>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: INK, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={profileForm.isTaxPayer}
+                    onChange={(e) => setProfileForm({ ...profileForm, isTaxPayer: e.target.checked })}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    <strong>Income Tax Payee (File ITR under Income Tax Act)</strong>
+                    <div style={{ fontSize: 11.5, color: "#78350F" }}>
+                      Statutory exclusion for Atal Pension Yojana &amp; non-contributory pensions.
+                    </div>
+                  </div>
+                </label>
               </div>
             </div>
 
@@ -1102,7 +1190,7 @@ export default function UserDashboard({
                   }}
                 >
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 11, background: "#F1F5F9", color: "#475569", padding: "2px 6px", borderRadius: 3, fontWeight: 600 }}>
                         {new Date(a.createdAt).toLocaleDateString("en-IN", {
                           day: "numeric",
@@ -1115,9 +1203,26 @@ export default function UserDashboard({
                       <strong style={{ fontSize: 14.5, color: INK }}>
                         {a.topSchemeName || "Eligibility Evaluation"}
                       </strong>
+                      <span style={{ fontSize: 10.5, background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1E40AF", padding: "2px 6px", borderRadius: 3, fontWeight: 600 }}>
+                        Engine: {a.ruleVersion || "v2.0-deterministic-574"}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: "#64748B" }}>
-                      Matched <strong>{a.matchedSchemesCount}</strong> eligible schemes · Top Match Score: <strong style={{ color: OK }}>{a.topScore}%</strong>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, marginTop: 4 }}>
+                      <span style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: OK, padding: "2px 8px", borderRadius: 3, fontWeight: 600 }}>
+                        ✓ {a.eligibleCount != null ? a.eligibleCount : a.matchedSchemesCount} Eligible
+                      </span>
+                      <span style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#B45309", padding: "2px 8px", borderRadius: 3, fontWeight: 600 }}>
+                        ⚠️ {a.potentiallyEligibleCount != null ? a.potentiallyEligibleCount : 0} Potentially Eligible
+                      </span>
+                      {a.notEligibleCount != null && (
+                        <span style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "2px 8px", borderRadius: 3, fontWeight: 600 }}>
+                          ✕ {a.notEligibleCount} Excluded
+                        </span>
+                      )}
+                      <span style={{ color: "#64748B" }}>
+                        · Total Evaluated: <strong>{a.totalEvaluated || 574}</strong> · Top Score: <strong style={{ color: OK }}>{a.topScore}%</strong>
+                      </span>
                     </div>
                   </div>
 

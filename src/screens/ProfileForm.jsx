@@ -276,6 +276,40 @@ export default function ProfileForm({
                   ))}
                 </select>
               </Field>
+
+              <Field
+                label="Educational Qualification"
+                hint="Used to verify scholarship, fellowship, and technical degree prerequisites."
+              >
+                <select value={profile.education || ""} onChange={set("education")} style={inputStyle}>
+                  <option value="">Select Qualification (Optional)</option>
+                  <option value="Below 10th">Below 10th Standard</option>
+                  <option value="10th Pass">10th Pass (Matriculation)</option>
+                  <option value="12th Pass">12th Pass (Higher Secondary)</option>
+                  <option value="ITI / Diploma">ITI / Polytechnic Diploma</option>
+                  <option value="Graduate">Graduate (B.A., B.Sc., B.Com, B.Tech)</option>
+                  <option value="Post Graduate">Post Graduate (M.A., M.Sc., M.Tech, etc.)</option>
+                  <option value="Doctorate">Doctorate / Ph.D. / Professional Degree</option>
+                </select>
+              </Field>
+
+              <Field
+                label="Primary Occupation / Status"
+                hint="Matches designated livelihood initiatives (e.g. Kisan credit, scholarships, vendor loans)."
+              >
+                <select value={profile.occupation || ""} onChange={set("occupation")} style={inputStyle}>
+                  <option value="">Select Occupation (Optional)</option>
+                  <option value="Student">Student (Scholarships / Fellowships)</option>
+                  <option value="Farmer">Farmer / Cultivator / Dairy Producer</option>
+                  <option value="Artisan">Traditional Artisan / Handloom Weaver</option>
+                  <option value="Sanitation Worker">Sanitation Worker / Safai Karamchari</option>
+                  <option value="Street Vendor">Street Vendor / Urban Micro-hawker</option>
+                  <option value="Self-Employed">Self-Employed / Shop Owner</option>
+                  <option value="Unemployed">Unemployed / Job Seeker</option>
+                  <option value="Salaried">Salaried Employee (Public/Private)</option>
+                  <option value="Other">Other Livelihood</option>
+                </select>
+              </Field>
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
@@ -514,6 +548,70 @@ export default function ProfileForm({
                   <option value="Trading">Trading / Retail / Micro-vending</option>
                 </select>
               </Field>
+            </div>
+
+            {/* Statutory Exclusions & Welfare Ration Card Checks */}
+            <div style={{ marginTop: 14, marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 8 }}>
+                Statutory Exclusions &amp; Ration Cards:
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    padding: "10px 12px",
+                    background: profile.hasBplCard ? "#FDF8F3" : "#FFFFFF",
+                    border: `1px solid ${profile.hasBplCard ? SEAL : RULE}`,
+                    borderRadius: 4,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(profile.hasBplCard)}
+                    onChange={toggleCheck("hasBplCard")}
+                    style={{ marginTop: 3, accentColor: SEAL }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>
+                      Hold valid BPL / Antyodaya Ration Card
+                    </div>
+                    <div style={{ fontSize: 11.5, color: INK_MUTED, marginTop: 2 }}>
+                      Mandatory for destitute pensions, NSAP, and free welfare allotments.
+                    </div>
+                  </div>
+                </label>
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    padding: "10px 12px",
+                    background: profile.isTaxPayer ? "#FEF2F2" : "#FFFFFF",
+                    border: `1px solid ${profile.isTaxPayer ? "#DC2626" : RULE}`,
+                    borderRadius: 4,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(profile.isTaxPayer)}
+                    onChange={toggleCheck("isTaxPayer")}
+                    style={{ marginTop: 3, accentColor: "#DC2626" }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>
+                      Income Tax Payee (Filed ITR in past 3 years)
+                    </div>
+                    <div style={{ fontSize: 11.5, color: INK_MUTED, marginTop: 2 }}>
+                      Statutory scheme guidelines for APY and social pensions disqualify income-tax payers.
+                    </div>
+                  </div>
+                </label>
+              </div>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 28 }}>
