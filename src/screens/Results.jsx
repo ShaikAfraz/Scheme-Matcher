@@ -15,6 +15,7 @@ import {
   Sparkles,
   Users,
   Compass,
+  Bookmark,
 } from "lucide-react";
 import ScoreBadge from "../components/ScoreBadge.jsx";
 import VoiceReader from "../components/VoiceReader.jsx";
@@ -49,6 +50,9 @@ export default function Results({
   onOpenCsc,
   lang = "en",
   isPlainMode = false,
+  currentUser = null,
+  bookmarks = [],
+  onToggleBookmark = null,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [tierFilter, setTierFilter] = useState("all"); // "all" | "high" | "moderate" | "gap"
@@ -558,6 +562,9 @@ export default function Results({
           filteredMatches.map(({ scheme, score, reasons }, index) => {
             const isHighMatch = score >= 70;
             const isModerate = score >= 40 && score < 70;
+            const isBookmarked = (bookmarks || []).some(
+              (b) => (b.scheme?.id || b.schemeId) === scheme.id
+            );
             const isArtisanScheme =
               scheme.categories.includes("Artisan") ||
               scheme.name.toLowerCase().includes("vishwakarma") ||
@@ -817,30 +824,60 @@ export default function Results({
                     gap: 12,
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => openDetails(scheme.id)}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 18px",
-                      background: SEAL,
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: 4,
-                      fontFamily: sans,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      transition: "background-color 0.15s ease",
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.backgroundColor = SEAL_HOVER)}
-                    onMouseOut={(e) => (e.currentTarget.style.backgroundColor = SEAL)}
-                  >
-                    <span>View Scheme Details &amp; Checklist</span>
-                    <ArrowRight size={14} />
-                  </button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => openDetails(scheme.id)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 18px",
+                        background: SEAL,
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: 4,
+                        fontFamily: sans,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "background-color 0.15s ease",
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.backgroundColor = SEAL_HOVER)}
+                      onMouseOut={(e) => (e.currentTarget.style.backgroundColor = SEAL)}
+                    >
+                      <span>View Scheme Details &amp; Checklist</span>
+                      <ArrowRight size={14} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onToggleBookmark && onToggleBookmark(scheme.id)}
+                      title={isBookmarked ? "Remove from saved bookmarks" : "Save scheme to citizen profile"}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "7px 14px",
+                        background: isBookmarked ? "#FEF3C7" : "#FFFFFF",
+                        border: `1px solid ${isBookmarked ? "#F59E0B" : RULE}`,
+                        borderRadius: 4,
+                        color: isBookmarked ? "#92400E" : INK_MUTED,
+                        fontFamily: sans,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <Bookmark
+                        size={14}
+                        fill={isBookmarked ? "#F59E0B" : "none"}
+                        color={isBookmarked ? "#D97706" : INK_MUTED}
+                      />
+                      <span>{isBookmarked ? "Saved" : "Save Scheme"}</span>
+                    </button>
+                  </div>
 
                   {scheme.portalUrl && (
                     <a

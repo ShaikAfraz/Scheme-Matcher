@@ -11,6 +11,7 @@ import {
   getUserById,
   getUserByEmailOrMobile,
   saveUser,
+  updateUserProfile,
   authenticateUser,
   createSession,
   getSessionUser,
@@ -22,6 +23,15 @@ import {
   lookupPublicApplication,
   getAllDocuments,
   saveDocument,
+  saveAssessment,
+  getUserAssessments,
+  getAssessmentById,
+  saveSchemeBookmark,
+  getUserBookmarks,
+  removeSchemeBookmark,
+  recordAuditLog,
+  getAuditLogs,
+  getSystemStats,
 } from "./db.js";
 import { sanitizeString, validateEmailOrMobile } from "./security.js";
 import "./seed.js";
@@ -141,25 +151,28 @@ export function createDatabaseApiMiddleware() {
 
     try {
       // ---------------------------------------------------------
-      // HEALTH / SYSTEM STATUS
+      // HEALTH / SYSTEM STATS (DYNAMIC DATABASE-BACKED)
       // ---------------------------------------------------------
-      if (pathname === "/api/status" && req.method === "GET") {
-        const userCount = db.prepare("SELECT count(*) as count FROM users").get().count;
-        const appCount = db.prepare("SELECT count(*) as count FROM applications").get().count;
-        const schemeCount = db.prepare("SELECT count(*) as count FROM schemes").get().count;
-        const sessionCount = db.prepare("SELECT count(*) as count FROM sessions WHERE expires_at > datetime('now')").get().count;
+      if ((pathname === "/api/status" || pathname === "/api/stats") && req.method === "GET") {
+        const stats = getSystemStats();
 
         return sendJson(res, 200, {
           status: "connected",
-          engine: "SQLite 3 (better-sqlite3) with Scrypt Security & Session Management",
+          engine: "SQLite 3 (better-sqlite3) with Relational Storage & Session Engine",
           database: "database.sqlite",
           persisted: true,
+          stats,
           counts: {
-            users: userCount,
-            applications: appCount,
-            schemes: schemeCount,
-            activeSessions: sessionCount,
+            users: stats.users,
+            applications: stats.applications,
+            schemes: stats.schemes,
+            assessments: stats.assessments,
+            documents: stats.documents,
+            bookmarks: stats.bookmarks,
+            activeSessions: stats.activeSessions,
           },
+          financials: stats.financials,
+          stageDistribution: stats.stageDistribution,
           timestamp: new Date().toISOString(),
         }, req);
       }
@@ -255,6 +268,20 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 401, { success: false, error: "Not authenticated or session expired." }, req);
         }
         return sendJson(res, 200, { success: true, user }, req);
+      }
+
+      if (pathname === "/api/auth/profile" && req.method === "PUT") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to update profile." }, req);
+        }
+        const data = await parseJsonBody(req);
+        const updatedUser = updateUserProfile(authUser.id, data);
+        return sendJson(res, 200, {
+          success: true,
+          message: "Profile updated successfully.",
+          user: updatedUser,
+        }, req);
       }
 
       // ---------------------------------------------------------
@@ -394,6 +421,117 @@ export function createDatabaseApiMiddleware() {
         const docData = await parseJsonBody(req);
         saveDocument(docData, authUser.id);
         return sendJson(res, 201, { success: true, message: "Document record saved." }, req);
+      }
+
+      // ---------------------------------------------------------
+      // ELIGIBILITY ASSESSMENTS (PERSISTED MATCH HISTORY)
+      // ---------------------------------------------------------
+      if (pathname === "/api/assessments" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to view assessment history." }, req);
+        }
+
+        const requestedId = url.searchParams.get("id");
+        if (requestedId) {
+          const assessment = getAssessmentById(requestedId, {
+            userId: authUser.id,
+            role: authUser.systemRole,
+          });
+          if (!assessment) {
+            return sendJson(res, 404, { success: false, error: "Assessment record not found or access denied." }, req);
+          }
+          return sendJson(res, 200, { success: true, assessment }, req);
+        }
+
+        const targetUserId = (authUser.systemRole === "admin" && url.searchParams.get("userId"))
+          ? url.searchParams.get("userId")
+          : authUser.id;
+
+        const limit = Math.min(Number(url.searchParams.get("limit") || 10), 100);
+        const assessments = getUserAssessments(targetUserId, { limit });
+        return sendJson(res, 200, { success: true, count: assessments.length, assessments }, req);
+      }
+
+      if (pathname === "/api/assessments" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to save assessment." }, req);
+        }
+
+        const body = await parseJsonBody(req);
+        const saved = saveAssessment({
+          id: body.id,
+          userId: authUser.id,
+          profileSnapshot: body.profileSnapshot || body.profile || {},
+          matchedSchemesCount: body.matchedSchemesCount || body.matchedCount || 0,
+          topSchemeId: body.topSchemeId || null,
+          topSchemeName: body.topSchemeName || null,
+          topScore: body.topScore || 0,
+          resultsSummary: body.resultsSummary || body.results || [],
+        });
+
+        return sendJson(res, 201, {
+          success: true,
+          message: "Assessment saved to persistent database.",
+          assessment: saved,
+        }, req);
+      }
+
+      // ---------------------------------------------------------
+      // SAVED / BOOKMARKED SCHEMES (SECURED)
+      // ---------------------------------------------------------
+      if (pathname === "/api/bookmarks" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to view saved schemes." }, req);
+        }
+        const bookmarks = getUserBookmarks(authUser.id);
+        return sendJson(res, 200, { success: true, count: bookmarks.length, bookmarks }, req);
+      }
+
+      if (pathname === "/api/bookmarks" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to bookmark schemes." }, req);
+        }
+        const body = await parseJsonBody(req);
+        const schemeId = body.schemeId || body.scheme_id;
+        if (!schemeId) {
+          return sendJson(res, 400, { success: false, error: "Scheme ID is required." }, req);
+        }
+        const saved = saveSchemeBookmark(authUser.id, schemeId, body.notes || "");
+        return sendJson(res, 201, { success: true, message: "Scheme bookmarked successfully.", bookmark: saved }, req);
+      }
+
+      if (pathname === "/api/bookmarks" && req.method === "DELETE") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to remove bookmark." }, req);
+        }
+        const schemeId = url.searchParams.get("schemeId") || url.searchParams.get("scheme_id");
+        if (!schemeId) {
+          return sendJson(res, 400, { success: false, error: "Scheme ID is required." }, req);
+        }
+        const removed = removeSchemeBookmark(authUser.id, schemeId);
+        if (!removed) {
+          return sendJson(res, 404, { success: false, error: "Bookmark not found." }, req);
+        }
+        return sendJson(res, 200, { success: true, message: "Bookmark removed successfully." }, req);
+      }
+
+      // ---------------------------------------------------------
+      // AUDIT LOGS (ADMIN ONLY)
+      // ---------------------------------------------------------
+      if (pathname === "/api/audit-logs" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser || authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required to view audit logs." }, req);
+        }
+        const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+        const action = url.searchParams.get("action");
+        const logs = getAuditLogs({ role: authUser.systemRole, limit, action });
+        return sendJson(res, 200, { success: true, count: logs.length, logs }, req);
       }
 
       // ---------------------------------------------------------

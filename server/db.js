@@ -158,6 +158,8 @@ export function getUserByEmailOrMobile(identifier) {
 }
 
 export function saveUser(user) {
+  const userId = user.id || `usr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
   // If password is not already an scrypt hash, hash it securely
   let finalPassword = user.password || "pass123";
   if (!finalPassword.startsWith("scrypt:")) {
@@ -187,7 +189,7 @@ export function saveUser(user) {
   `);
 
   stmt.run({
-    id: user.id || `usr_${Date.now()}`,
+    id: userId,
     name: user.name,
     email: user.email || `${user.mobile || Date.now()}@citizen.in`,
     mobile: user.mobile || "",
@@ -201,7 +203,7 @@ export function saveUser(user) {
     profile_data: user.profileData ? JSON.stringify(user.profileData) : null,
   });
 
-  return getUserById(user.id || `usr_${Date.now()}`);
+  return getUserById(userId);
 }
 
 export function authenticateUser(identifier, password) {
@@ -452,6 +454,259 @@ export function saveDocument(doc, userId) {
 }
 
 // -------------------------------------------------------------
+// USER PROFILE UPDATES (PERMANENT PERSISTENCE)
+// -------------------------------------------------------------
+export function updateUserProfile(userId, profileData) {
+  if (!userId) throw new Error("User ID is required to update profile");
+  const json = JSON.stringify(profileData);
+  const stmt = db.prepare(`
+    UPDATE users
+    SET profile_data = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+  stmt.run(json, userId);
+
+  recordAuditLog({
+    userId,
+    action: "PROFILE_UPDATE",
+    resourceType: "user",
+    resourceId: userId,
+    details: { updatedKeys: Object.keys(profileData) },
+  });
+
+  return getUserById(userId);
+}
+
+// -------------------------------------------------------------
+// ELIGIBILITY ASSESSMENTS (PERMANENT MATCH AUDIT TRAIL)
+// -------------------------------------------------------------
+export function saveAssessment({
+  id = null,
+  userId = null,
+  profileSnapshot = {},
+  matchedSchemesCount = 0,
+  topSchemeId = null,
+  topSchemeName = null,
+  topScore = 0,
+  resultsSummary = [],
+}) {
+  const assessmentId = id || `asm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const stmt = db.prepare(`
+    INSERT INTO assessments (
+      id, user_id, profile_snapshot, matched_schemes_count,
+      top_scheme_id, top_scheme_name, top_score, results_summary
+    ) VALUES (
+      @id, @user_id, @profile_snapshot, @matched_schemes_count,
+      @top_scheme_id, @top_scheme_name, @top_score, @results_summary
+    )
+  `);
+
+  stmt.run({
+    id: assessmentId,
+    user_id: userId,
+    profile_snapshot: typeof profileSnapshot === "string" ? profileSnapshot : JSON.stringify(profileSnapshot),
+    matched_schemes_count: Number(matchedSchemesCount) || 0,
+    top_scheme_id: topSchemeId || null,
+    top_scheme_name: topSchemeName || null,
+    top_score: Number(topScore) || 0,
+    results_summary: typeof resultsSummary === "string" ? resultsSummary : JSON.stringify(resultsSummary),
+  });
+
+  if (userId) {
+    recordAuditLog({
+      userId,
+      action: "ASSESSMENT_RUN",
+      resourceType: "assessment",
+      resourceId: assessmentId,
+      details: { topSchemeId, topScore, matchedCount: matchedSchemesCount },
+    });
+  }
+
+  return getAssessmentById(assessmentId, { userId, role: "admin" });
+}
+
+export function getUserAssessments(userId, { limit = 10 } = {}) {
+  if (!userId) return [];
+  const stmt = db.prepare(`
+    SELECT * FROM assessments
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `);
+  return stmt.all(userId, limit).map(formatAssessmentRow);
+}
+
+export function getAssessmentById(id, { userId = null, role = "citizen" } = {}) {
+  const stmt = db.prepare("SELECT * FROM assessments WHERE id = ?");
+  const r = stmt.get(id);
+  if (!r) return null;
+  const assessment = formatAssessmentRow(r);
+  if (role !== "admin" && userId && assessment.userId !== userId) {
+    return null;
+  }
+  return assessment;
+}
+
+// -------------------------------------------------------------
+// SAVED / BOOKMARKED SCHEMES
+// -------------------------------------------------------------
+export function saveSchemeBookmark(userId, schemeId, notes = "") {
+  if (!userId || !schemeId) throw new Error("User ID and Scheme ID are required to bookmark a scheme");
+  const id = `bmk_${userId}_${schemeId}`;
+  const stmt = db.prepare(`
+    INSERT INTO saved_schemes (id, user_id, scheme_id, notes)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, scheme_id) DO UPDATE SET
+      notes = excluded.notes
+  `);
+  stmt.run(id, userId, schemeId, notes);
+
+  recordAuditLog({
+    userId,
+    action: "SCHEME_BOOKMARK",
+    resourceType: "scheme",
+    resourceId: schemeId,
+    details: { notes },
+  });
+
+  return { id, userId, schemeId, notes };
+}
+
+export function getUserBookmarks(userId) {
+  if (!userId) return [];
+  const stmt = db.prepare(`
+    SELECT b.id as bookmark_id, b.notes, b.created_at as bookmarked_at,
+           s.*
+    FROM saved_schemes b
+    JOIN schemes s ON b.scheme_id = s.id
+    WHERE b.user_id = ?
+    ORDER BY b.created_at DESC
+  `);
+  return stmt.all(userId).map((r) => ({
+    bookmarkId: r.bookmark_id,
+    notes: r.notes,
+    bookmarkedAt: r.bookmarked_at,
+    scheme: {
+      id: r.id,
+      name: r.name,
+      ministry: r.ministry,
+      description: r.description,
+      categories: JSON.parse(r.categories || "[]"),
+      states: JSON.parse(r.states || "[]"),
+      businessStatus: JSON.parse(r.business_status || "[]"),
+      businessTypes: JSON.parse(r.business_types || "[]"),
+      benefits: r.benefits,
+      minReq: r.min_req,
+      maxReq: r.max_req,
+      portalUrl: r.portal_url,
+    },
+  }));
+}
+
+export function removeSchemeBookmark(userId, schemeId) {
+  if (!userId || !schemeId) return false;
+  const stmt = db.prepare("DELETE FROM saved_schemes WHERE user_id = ? AND scheme_id = ?");
+  const res = stmt.run(userId, schemeId);
+  return res.changes > 0;
+}
+
+// -------------------------------------------------------------
+// AUDIT LOGS
+// -------------------------------------------------------------
+export function recordAuditLog({
+  userId = null,
+  action,
+  resourceType,
+  resourceId = null,
+  details = null,
+  ipAddress = null,
+}) {
+  try {
+    const id = `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const stmt = db.prepare(`
+      INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, details, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      id,
+      userId,
+      action,
+      resourceType,
+      resourceId,
+      details ? JSON.stringify(details) : null,
+      ipAddress
+    );
+    return id;
+  } catch (err) {
+    console.warn("[Audit] Failed to record audit log:", err.message);
+    return null;
+  }
+}
+
+export function getAuditLogs({ role = "citizen", limit = 50, action = null } = {}) {
+  if (role !== "admin") {
+    throw new Error("Access denied: Administrator privileges required to access audit logs.");
+  }
+  let query = "SELECT * FROM audit_logs";
+  const params = [];
+  if (action) {
+    query += " WHERE action = ?";
+    params.push(action);
+  }
+  query += " ORDER BY created_at DESC LIMIT ?";
+  params.push(limit);
+
+  return db.prepare(query).all(...params).map((r) => ({
+    ...r,
+    details: r.details ? JSON.parse(r.details) : null,
+  }));
+}
+
+// -------------------------------------------------------------
+// DYNAMIC DATABASE-BACKED SYSTEM STATISTICS
+// -------------------------------------------------------------
+export function getSystemStats() {
+  const userCount = db.prepare("SELECT count(*) as count FROM users").get().count;
+  const appCount = db.prepare("SELECT count(*) as count FROM applications").get().count;
+  const schemeCount = db.prepare("SELECT count(*) as count FROM schemes").get().count;
+  const assessmentCount = db.prepare("SELECT count(*) as count FROM assessments").get().count;
+  const docCount = db.prepare("SELECT count(*) as count FROM documents").get().count;
+  const bookmarkCount = db.prepare("SELECT count(*) as count FROM saved_schemes").get().count;
+  const sessionCount = db.prepare("SELECT count(*) as count FROM sessions WHERE expires_at > datetime('now')").get().count;
+
+  const finStats = db.prepare(`
+    SELECT
+      COALESCE(SUM(requested_amount), 0) as total_requested,
+      COALESCE(SUM(sanctioned_amount), 0) as total_sanctioned,
+      COALESCE(SUM(subsidy_amount), 0) as total_subsidy
+    FROM applications
+  `).get();
+
+  const stageCounts = db.prepare(`
+    SELECT current_stage, count(*) as count
+    FROM applications
+    GROUP BY current_stage
+    ORDER BY current_stage ASC
+  `).all();
+
+  return {
+    users: userCount,
+    schemes: schemeCount,
+    applications: appCount,
+    assessments: assessmentCount,
+    documents: docCount,
+    bookmarks: bookmarkCount,
+    activeSessions: sessionCount,
+    financials: {
+      totalRequested: finStats.total_requested,
+      totalSanctioned: finStats.total_sanctioned,
+      totalSubsidy: finStats.total_subsidy,
+    },
+    stageDistribution: stageCounts,
+  };
+}
+
+// -------------------------------------------------------------
 // HELPER FORMATTERS
 // -------------------------------------------------------------
 function formatUserRow(r) {
@@ -491,6 +746,20 @@ function formatAppRow(r) {
     nodalOfficer: r.nodal_officer,
     officerPhone: r.officer_phone,
     timeline: r.timeline ? JSON.parse(r.timeline) : [],
+    createdAt: r.created_at,
+  };
+}
+
+function formatAssessmentRow(r) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    profileSnapshot: r.profile_snapshot ? JSON.parse(r.profile_snapshot) : {},
+    matchedSchemesCount: r.matched_schemes_count,
+    topSchemeId: r.top_scheme_id,
+    topSchemeName: r.top_scheme_name,
+    topScore: r.top_score,
+    resultsSummary: r.results_summary ? JSON.parse(r.results_summary) : [],
     createdAt: r.created_at,
   };
 }

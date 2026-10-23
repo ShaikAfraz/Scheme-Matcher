@@ -89,6 +89,8 @@ export default function App() {
   const [applications, setApplications] = useState(() => {
     return getStoredApplications(currentUser?.id);
   });
+  const [bookmarks, setBookmarks] = useState([]);
+  const [isSavingMatch, setIsSavingMatch] = useState(false);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -116,6 +118,38 @@ export default function App() {
         .catch(() => {});
     }
   }, []);
+
+  // Sync documents and bookmarks from backend
+  useEffect(() => {
+    const token = getStoredAuthToken();
+    if (token && currentUser?.id) {
+      // Sync documents
+      fetch("/api/documents", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.documents) && data.documents.length > 0) {
+            setDocuments(data.documents);
+          }
+        })
+        .catch(() => {});
+
+      // Sync bookmarks
+      fetch("/api/bookmarks", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.bookmarks)) {
+            setBookmarks(data.bookmarks);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setBookmarks([]);
+    }
+  }, [currentUser, screen]);
 
   // On mount, synchronize with active user data & browser URL hash
   useEffect(() => {
@@ -251,7 +285,7 @@ export default function App() {
     }
   };
 
-  const runMatch = () => {
+  const runMatch = async () => {
     const formattedProfile = {
       ...profile,
       age: Number(profile.age) || 28,
@@ -260,7 +294,120 @@ export default function App() {
     };
     const results = matchSchemes(formattedProfile);
     setMatches(results);
+
+    // Persist profile updates and assessment audit trail to SQLite database if authenticated
+    const token = getStoredAuthToken();
+    if (token && currentUser) {
+      setIsSavingMatch(true);
+      try {
+        // 1. Permanently save updated profile parameters
+        const profileRes = await fetch("/api/auth/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(formattedProfile),
+        });
+        const profileData = await profileRes.json();
+        if (profileData.success && profileData.user) {
+          setCurrentUser(profileData.user);
+          setStoredActiveUser(profileData.user);
+        }
+
+        // 2. Permanently record eligibility assessment audit record
+        const topMatch = results[0] || null;
+        await fetch("/api/assessments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            profileSnapshot: formattedProfile,
+            matchedSchemesCount: results.length,
+            topSchemeId: topMatch?.scheme?.id || null,
+            topSchemeName: topMatch?.scheme?.name || null,
+            topScore: topMatch?.score ?? 0,
+            resultsSummary: results.slice(0, 10).map((r) => ({
+              id: r.scheme?.id,
+              name: r.scheme?.name,
+              score: r.score,
+              greenReasons: r.reasons?.green || [],
+            })),
+          }),
+        });
+      } catch (err) {
+        console.warn("[Persistence] Failed to sync profile/assessment to database:", err.message);
+      } finally {
+        setIsSavingMatch(false);
+      }
+    }
+
     navigateTo("results");
+  };
+
+  const handleToggleBookmark = async (schemeId) => {
+    const token = getStoredAuthToken();
+    if (!token || !currentUser?.id) {
+      navigateTo("login");
+      return;
+    }
+
+    const isBookmarked = bookmarks.some((b) => (b.scheme?.id || b.schemeId) === schemeId);
+    if (isBookmarked) {
+      try {
+        const res = await fetch(`/api/bookmarks?schemeId=${encodeURIComponent(schemeId)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          setBookmarks((prev) => prev.filter((b) => (b.scheme?.id || b.schemeId) !== schemeId));
+        }
+      } catch (err) {
+        console.warn("Error removing bookmark:", err);
+      }
+    } else {
+      try {
+        const res = await fetch("/api/bookmarks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ schemeId }),
+        });
+        if (res.ok) {
+          const fetchRes = await fetch("/api/bookmarks", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await fetchRes.json();
+          if (data.success && Array.isArray(data.bookmarks)) {
+            setBookmarks(data.bookmarks);
+          }
+        }
+      } catch (err) {
+        console.warn("Error saving bookmark:", err);
+      }
+    }
+  };
+
+  const handleUploadDoc = async (newDoc) => {
+    const token = getStoredAuthToken();
+    if (token && currentUser?.id) {
+      try {
+        await fetch("/api/documents", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(newDoc),
+        });
+      } catch (err) {
+        console.warn("Error persisting document metadata to database:", err);
+      }
+    }
   };
 
   const openDetails = (id) => {
@@ -487,7 +634,7 @@ export default function App() {
                   background: dbStatus?.status === "connected" ? "#16A34A" : "#D97706",
                 }}
               />
-              <span>{dbStatus?.status === "connected" ? "SQLite Active · 19 Schemes Codified" : "Local Database Active"}</span>
+              <span>{dbStatus?.status === "connected" ? `SQLite Active · ${dbStatus?.counts?.schemes || 19} Schemes Codified` : "Local Database Active"}</span>
             </div>
             {currentUser ? (
               <div
@@ -870,6 +1017,7 @@ export default function App() {
               setScreen={navigateTo}
               onOpenCsc={() => setIsCscOpen(true)}
               lang={lang}
+              dbStatus={dbStatus}
             />
           </div>
         ) : (
@@ -904,6 +1052,7 @@ export default function App() {
                 onGoToDocuments={() => navigateTo("documents")}
                 onBack={goBack}
                 lang={lang}
+                isSaving={isSavingMatch}
               />
             )}
 
@@ -915,6 +1064,9 @@ export default function App() {
                 onOpenCsc={() => setIsCscOpen(true)}
                 lang={lang}
                 isPlainMode={isPlainMode}
+                currentUser={currentUser}
+                bookmarks={bookmarks}
+                onToggleBookmark={handleToggleBookmark}
               />
             )}
 
@@ -961,6 +1113,7 @@ export default function App() {
               <Documents
                 documents={documents}
                 setDocuments={setDocuments}
+                onUploadDoc={handleUploadDoc}
                 profile={profile}
                 setProfile={setProfile}
                 onProceedToMatches={profile.age ? runMatch : () => navigateTo("profile")}
@@ -1088,7 +1241,7 @@ export default function App() {
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
               {dbStatus?.status === "connected" && (
                 <span style={{ color: "#34D399", fontWeight: 600 }}>
-                  ● SQLite DB ({dbStatus.counts?.users || 0} Users, {dbStatus.counts?.applications || 0} Applications)
+                  ● SQLite DB ({dbStatus.counts?.users || 0} Citizens, {dbStatus.counts?.schemes || 19} Schemes, {dbStatus.counts?.applications || 0} Applications)
                 </span>
               )}
               <span>Terms of Use</span>

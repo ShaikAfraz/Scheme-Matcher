@@ -31,6 +31,7 @@ const DOCUMENT_TYPES = [
 export default function Documents({
   documents,
   setDocuments,
+  onUploadDoc,
   profile,
   setProfile,
   onProceedToMatches,
@@ -60,6 +61,9 @@ export default function Documents({
     });
 
     setDocuments((prev) => [...prev, ...newDocs]);
+    if (onUploadDoc) {
+      newDocs.forEach((doc) => onUploadDoc(doc));
+    }
     setUploadSuccess(`Successfully stored ${newDocs.length} document(s) in your citizen vault.`);
     setTimeout(() => setUploadSuccess(null), 3500);
   };

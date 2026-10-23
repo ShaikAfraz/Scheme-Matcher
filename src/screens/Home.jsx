@@ -34,7 +34,7 @@ import {
 import { TRANSLATIONS } from "../theme/i18n.js";
 import { SCHEMES } from "../data/schemes.js";
 
-export default function Home({ setScreen, onOpenCsc, lang = "en" }) {
+export default function Home({ setScreen, onOpenCsc, lang = "en", dbStatus = null }) {
   const [searchQuery, setSearchQuery] = useState("");
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -130,7 +130,7 @@ export default function Home({ setScreen, onOpenCsc, lang = "en" }) {
             >
               Government welfare and subsidized loan programs shouldn't require
               intermediaries or bureaucratic deciphering. Scheme Matcher evaluates
-              your age, trade, social category, and income against 19 codified central
+              your age, trade, social category, and income against {dbStatus?.counts?.schemes || 19} codified central
               welfare programs — with 100% deterministic transparency.
             </p>
 
@@ -197,7 +197,7 @@ export default function Home({ setScreen, onOpenCsc, lang = "en" }) {
                   e.currentTarget.style.backgroundColor = "transparent";
                 }}
               >
-                <span>Explore All 19 Schemes</span>
+                <span>Explore All {dbStatus?.counts?.schemes || 19} Schemes</span>
                 <ArrowRight size={14} color={SEAL} />
               </button>
             </div>
@@ -421,9 +421,11 @@ export default function Home({ setScreen, onOpenCsc, lang = "en" }) {
           >
             {[
               {
-                stat: "19",
+                stat: String(dbStatus?.counts?.schemes || 19),
                 label: "Codified Schemes",
-                desc: "Active welfare programs with fully audited rules across MSJE, MSME, and MoHUA.",
+                desc: dbStatus?.counts?.users
+                  ? `${dbStatus.counts.users} citizen profiles registered with live database persistence.`
+                  : "Active welfare programs with fully audited rules across MSJE, MSME, and MoHUA.",
               },
               {
                 stat: "6",

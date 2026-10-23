@@ -75,6 +75,104 @@ export function runMigrations(db) {
     console.log(`[Migration] Upgraded ${upgradedCount} user account(s) to scrypt password hashes.`);
   }
 
+  // Migration 3: Assessments, Saved Schemes (Bookmarks), and Audit Logs
+  if (!applied.has(3)) {
+    console.log("[Migration] Applying Migration 3: Assessments, Bookmarks, and Audit Logs...");
+
+    // 1. Eligibility Assessments table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS assessments (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        profile_snapshot TEXT NOT NULL,
+        matched_schemes_count INTEGER NOT NULL DEFAULT 0,
+        top_scheme_id TEXT,
+        top_scheme_name TEXT,
+        top_score REAL DEFAULT 0,
+        results_summary TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(top_scheme_id) REFERENCES schemes(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_assessments_user_id ON assessments(user_id);
+      CREATE INDEX IF NOT EXISTS idx_assessments_created_at ON assessments(created_at);
+    `);
+
+    // 2. Saved / Bookmarked Schemes table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS saved_schemes (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        scheme_id TEXT NOT NULL,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(scheme_id) REFERENCES schemes(id) ON DELETE CASCADE,
+        UNIQUE(user_id, scheme_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_saved_schemes_user_id ON saved_schemes(user_id);
+      CREATE INDEX IF NOT EXISTS idx_saved_schemes_scheme_id ON saved_schemes(scheme_id);
+    `);
+
+    // 3. System and Admin Audit Logs table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        action TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT,
+        details TEXT,
+        ip_address TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+    `);
+
+    // Helper to check if a table exists
+    const hasTable = (tableName) => Boolean(
+      db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(tableName)
+    );
+
+    // 4. Verify and add updated_at columns if table is present
+    if (hasTable("users")) {
+      const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+      if (!userColumns.includes("updated_at")) {
+        db.exec("ALTER TABLE users ADD COLUMN updated_at DATETIME;");
+        db.exec("UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;");
+      }
+    }
+
+    if (hasTable("applications")) {
+      const appColumns = db.prepare("PRAGMA table_info(applications)").all().map((c) => c.name);
+      if (!appColumns.includes("updated_at")) {
+        db.exec("ALTER TABLE applications ADD COLUMN updated_at DATETIME;");
+        db.exec("UPDATE applications SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL;");
+      }
+    }
+
+    if (hasTable("documents")) {
+      const docColumns = db.prepare("PRAGMA table_info(documents)").all().map((c) => c.name);
+      if (!docColumns.includes("verification_status")) {
+        db.exec("ALTER TABLE documents ADD COLUMN verification_status TEXT DEFAULT 'pending';");
+      }
+      if (!docColumns.includes("verification_notes")) {
+        db.exec("ALTER TABLE documents ADD COLUMN verification_notes TEXT;");
+      }
+    }
+
+    // Index on schemes if table exists
+    if (hasTable("schemes")) {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_schemes_ministry ON schemes(ministry);");
+    }
+
+    db.prepare("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (3, 'assessments_bookmarks_audit')").run();
+    console.log("[Migration] Migration 3 applied successfully.");
+  }
+
   console.log("[Migration] Database schema migrations are up to date.");
 
 }

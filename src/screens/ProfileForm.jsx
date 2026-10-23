@@ -60,6 +60,7 @@ export default function ProfileForm({
   onGoToDocuments,
   onBack,
   lang = "en",
+  isSaving = false,
 }) {
   const [currentStep, setCurrentStep] = useState(1); // 1: Demographics, 2: Category & Groups, 3: Economic & Enterprise
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
@@ -540,23 +541,23 @@ export default function ProfileForm({
               <button
                 type="button"
                 onClick={onSubmit}
-                disabled={!canSubmit}
+                disabled={!canSubmit || isSaving}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 8,
                   padding: "12px 28px",
-                  background: canSubmit ? SEAL : "#CBD5E1",
+                  background: canSubmit && !isSaving ? SEAL : "#CBD5E1",
                   color: "#FFFFFF",
                   border: "none",
                   borderRadius: 4,
                   fontSize: 14,
                   fontWeight: 600,
-                  cursor: canSubmit ? "pointer" : "not-allowed",
-                  boxShadow: canSubmit ? "0 1px 3px rgba(163, 86, 25, 0.25)" : "none",
+                  cursor: canSubmit && !isSaving ? "pointer" : "not-allowed",
+                  boxShadow: canSubmit && !isSaving ? "0 1px 3px rgba(163, 86, 25, 0.25)" : "none",
                 }}
               >
-                <span>Calculate Eligible Schemes</span>
+                <span>{isSaving ? "Persisting Profile to Database..." : "Calculate Eligible Schemes"}</span>
                 <ArrowRight size={16} />
               </button>
             </div>
