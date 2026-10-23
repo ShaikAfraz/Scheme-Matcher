@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   initDatabase,
@@ -7,6 +7,7 @@ import {
   getApplicationById,
   deleteApplication,
   lookupPublicApplication,
+  db,
 } from "../server/db.js";
 
 describe("Application Ownership & Authorization Module", () => {
@@ -127,5 +128,11 @@ describe("Application Ownership & Authorization Module", () => {
     assert.equal(publicResult.currentStage, 1);
     assert.equal(publicResult.userId, undefined, "Public tracking must NEVER expose internal user_id");
     assert.equal(publicResult.applicantPhone, undefined, "Public tracking must NOT leak applicant phone number");
+  });
+
+  after(() => {
+    try {
+      db.prepare("DELETE FROM applications WHERE id IN (?, ?)").run(appAId, appBId);
+    } catch {}
   });
 });

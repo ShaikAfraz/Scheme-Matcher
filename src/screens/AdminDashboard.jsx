@@ -69,7 +69,7 @@ export default function AdminDashboard({
   // Documents Queue State
   const [documentsQueue, setDocumentsQueue] = useState([]);
   const [totalDocs, setTotalDocs] = useState(0);
-  const [docStatusFilter, setDocStatusFilter] = useState("Needs Review"); // Default to Needs Review
+  const [docStatusFilter, setDocStatusFilter] = useState("all"); // Default to all uploaded documents
   const [docSearch, setDocSearch] = useState("");
   const [docPage, setDocPage] = useState(1);
   const docPageSize = 10;
@@ -201,8 +201,14 @@ export default function AdminDashboard({
   useEffect(() => {
     if (isAdmin && token) {
       loadStats();
+      const interval = setInterval(() => {
+        loadStats();
+        if (activeTab === "citizens") loadCitizens();
+        if (activeTab === "documents") loadDocuments();
+      }, 10000); // 10s auto-refresh for real-time live data
+      return () => clearInterval(interval);
     }
-  }, [isAdmin, token]);
+  }, [isAdmin, token, activeTab, docStatusFilter, docSearch, docPage]);
 
   useEffect(() => {
     if (!isAdmin || !token) return;
@@ -503,7 +509,7 @@ export default function AdminDashboard({
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <h2 style={{ margin: 0, fontSize: 19, fontFamily: serif, color: "#FFFFFF", fontWeight: 700 }}>
-                {currentUser?.name || "System Administrator"}
+                {currentUser?.name || "Yuvraj Choudhary"}
               </h2>
               <span
                 style={{
@@ -520,7 +526,7 @@ export default function AdminDashboard({
               </span>
             </div>
             <div style={{ fontSize: 12.5, color: "#94A3B8", marginTop: 4 }}>
-              Ministry Administration Console · {currentUser?.email}
+              Ministry Administration Console · {currentUser?.email || "yuvrajc5027@gmail.com"}
             </div>
           </div>
         </div>
@@ -677,7 +683,7 @@ export default function AdminDashboard({
             <div style={{ background: "#FFFFFF", border: `1px solid ${RULE}`, borderRadius: 4, padding: 16 }}>
               <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>REGISTERED CITIZENS</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: INK, marginTop: 4 }}>
-                {stats?.counts?.citizens || 0}
+                {stats?.counts?.citizens ?? 0}
               </div>
               <div style={{ fontSize: 11, color: OK, marginTop: 4 }}>✓ Authenticated DB Accounts</div>
             </div>
@@ -701,12 +707,12 @@ export default function AdminDashboard({
             </div>
 
             <div style={{ background: "#FFFFFF", border: `1px solid ${RULE}`, borderRadius: 4, padding: 16 }}>
-              <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>DOCUMENT QUEUE</div>
+              <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>UPLOADED DOCUMENTS</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: INK, marginTop: 4 }}>
-                {stats?.counts?.documentsNeedingReview || 0}
+                {stats?.documents?.total ?? stats?.counts?.totalDocuments ?? 0}
               </div>
-              <div style={{ fontSize: 11, color: "#B91C1C", marginTop: 4 }}>
-                {stats?.counts?.documentsVerified || 0} Verified · {stats?.counts?.documentsRejected || 0} Rejected
+              <div style={{ fontSize: 11, color: (stats?.counts?.documentsNeedingReview || 0) > 0 ? "#B91C1C" : "#64748B", marginTop: 4 }}>
+                {stats?.counts?.documentsNeedingReview || 0} Pending · {stats?.documents?.verified ?? stats?.counts?.documentsVerified ?? 0} Verified
               </div>
             </div>
 
@@ -716,7 +722,7 @@ export default function AdminDashboard({
                 {stats?.counts?.applications || 0}
               </div>
               <div style={{ fontSize: 11, color: OK, marginTop: 4 }}>
-                ₹{Number(stats?.counts?.totalRequestedAmount || 0).toLocaleString("en-IN")} Total Loan Requested
+                ₹{Number(stats?.counts?.totalRequestedAmount ?? stats?.financials?.totalRequested ?? 0).toLocaleString("en-IN")} Total Loan Requested
               </div>
             </div>
           </div>
@@ -1460,13 +1466,13 @@ export default function AdminDashboard({
                   setDocStatusFilter(e.target.value);
                   setDocPage(1);
                 }}
-                style={{ ...inputStyle, width: 180 }}
+                style={{ ...inputStyle, width: 190 }}
               >
+                <option value="all">All Uploaded Documents</option>
                 <option value="Needs Review">Queue: Needs Review</option>
                 <option value="Verified Against Provided Criteria">Status: Verified</option>
                 <option value="Rejected With Reason">Status: Rejected</option>
                 <option value="Pending">Status: Pending</option>
-                <option value="all">All Documents</option>
               </select>
 
               <button
@@ -1794,27 +1800,54 @@ export default function AdminDashboard({
                           </span>
                         </td>
                         <td style={{ padding: "10px 14px", textAlign: "right" }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setReviewModalDoc(doc);
-                              setReviewDecision(doc.verificationStatus || (doc.status === "Verified" ? "Verified Against Provided Criteria" : "Verified Against Provided Criteria"));
-                              setReviewRemark(doc.verificationNotes || doc.verificationRemark || "");
-                            }}
-                            style={{
-                              padding: "5px 12px",
-                              background: "#1E293B",
-                              color: "#FFFFFF",
-                              border: "none",
-                              borderRadius: 3,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            Review Case
-                          </button>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const url = `/api/documents/${encodeURIComponent(doc.id)}/download?token=${encodeURIComponent(token)}`;
+                                window.open(url, "_blank");
+                              }}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                padding: "5px 9px",
+                                background: "#FFFFFF",
+                                border: `1px solid ${RULE}`,
+                                color: INK,
+                                borderRadius: 3,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                              title="Download or preview full uploaded file"
+                            >
+                              <FileText size={12} />
+                              <span>View File</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReviewModalDoc(doc);
+                                setReviewDecision(doc.verificationStatus || (doc.status === "Verified" ? "Verified Against Provided Criteria" : "Verified Against Provided Criteria"));
+                                setReviewRemark(doc.verificationNotes || doc.verificationRemark || "");
+                              }}
+                              style={{
+                                padding: "5px 12px",
+                                background: "#1E293B",
+                                color: "#FFFFFF",
+                                border: "none",
+                                borderRadius: 3,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Review Case
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1893,13 +1926,35 @@ export default function AdminDashboard({
       {/* TAB 4: CITIZEN REGISTRY */}
       {activeTab === "citizens" && (
         <div>
-          <div style={{ marginBottom: 14 }}>
-            <h3 style={{ margin: "0 0 4px 0", fontFamily: serif, fontSize: 16, color: INK }}>
-              Registered Citizen Profiles ({citizens.length})
-            </h3>
-            <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>
-              Permanent database accounts with access control role isolation.
-            </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div>
+              <h3 style={{ margin: "0 0 4px 0", fontFamily: serif, fontSize: 16, color: INK }}>
+                Registered Citizen Profiles ({citizens.length})
+              </h3>
+              <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>
+                Permanent database accounts with access control role isolation. Real-time updates as citizens register.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadCitizens}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 12px",
+                background: "#FFFFFF",
+                border: `1px solid ${RULE}`,
+                color: INK,
+                borderRadius: 4,
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <RefreshCw size={13} />
+              <span>Refresh Citizens</span>
+            </button>
           </div>
 
           <div
@@ -1960,13 +2015,13 @@ export default function AdminDashboard({
                         {c.email || c.mobile || "—"}
                       </td>
                       <td style={{ padding: "10px 14px", color: "#334155" }}>
-                        {c.state || "—"}
+                        {c.profileData?.state || c.state || "—"}
                       </td>
                       <td style={{ padding: "10px 14px", color: "#334155" }}>
-                        {c.category || "General"}
+                        {c.profileData?.category || c.category || c.categoryBadge || "General"}
                       </td>
                       <td style={{ padding: "10px 14px", color: "#64748B", fontSize: 12 }}>
-                        {new Date(c.createdAt).toLocaleDateString()}
+                        {c.createdAt || c.created_at ? new Date(c.createdAt || c.created_at).toLocaleDateString() : "—"}
                       </td>
                     </tr>
                   ))

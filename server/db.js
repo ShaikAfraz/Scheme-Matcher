@@ -539,7 +539,8 @@ export function findConflictingDocument({ fileHash, certificateNumber, excludeUs
   return { duplicateHashFound, duplicateCertFound };
 }
 
-export function saveVerifiedDocument(docData, userId) {
+export function saveVerifiedDocument(docData, userContext) {
+  const userId = (typeof userContext === "object" && userContext !== null ? userContext.userId : userContext) || docData.userId;
   if (!userId) throw new Error("Authentication required to save documents");
 
   const docId = docData.id || `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -1731,9 +1732,12 @@ export function getAdminOverviewStats() {
       requiresVerificationSchemes,
       applications: appCount,
       documentsNeedingReview: docStats.pendingDocs || 0,
+      documentsVerified: docStats.verifiedDocs || 0,
+      documentsRejected: docStats.rejectedDocs || 0,
       totalDocuments: docStats.totalDocs || 0,
       totalDossiers,
       totalSanctionedAmount: financialStats.totalSanctioned || 0,
+      totalRequestedAmount: financialStats.totalRequested || 0,
     },
     citizensCount: citizenCount,
     activeSchemesCount: activeSchemes,

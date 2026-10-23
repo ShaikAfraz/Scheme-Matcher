@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   initDatabase,
@@ -210,5 +210,18 @@ describe("Database Persistence & Authorization Module", () => {
     assert.ok(typeof stats.financials.totalSanctioned === "number");
     assert.ok(typeof stats.financials.totalSubsidy === "number");
     assert.ok(stats.stageDistribution, "Stage distribution must be calculated");
+  });
+
+  after(() => {
+    try {
+      const uids = [citizenA?.id, citizenB?.id, adminUser?.id].filter(Boolean);
+      if (uids.length > 0) {
+        db.prepare(`DELETE FROM saved_schemes WHERE user_id IN (${uids.map(() => "?").join(",")})`).run(...uids);
+        db.prepare(`DELETE FROM assessments WHERE user_id IN (${uids.map(() => "?").join(",")})`).run(...uids);
+        db.prepare(`DELETE FROM sessions WHERE user_id IN (${uids.map(() => "?").join(",")})`).run(...uids);
+        db.prepare(`DELETE FROM audit_logs WHERE user_id IN (${uids.map(() => "?").join(",")})`).run(...uids);
+        db.prepare(`DELETE FROM users WHERE id IN (${uids.map(() => "?").join(",")})`).run(...uids);
+      }
+    } catch {}
   });
 });

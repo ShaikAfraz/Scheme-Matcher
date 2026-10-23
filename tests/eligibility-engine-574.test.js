@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { initDatabase, db, saveAssessment, getUserAssessments, getAssessmentById } from "../server/db.js";
 import { SCHEMES } from "../src/data/schemes.js";
@@ -359,5 +359,13 @@ describe("Eligibility & Recommendation Engine Upgrade (574 Schemes)", () => {
     // Admin retrieval
     const adminFetch = getAssessmentById(assessment.id, { userId: "admin_user", role: "admin" });
     assert.ok(adminFetch, "Admin must be able to inspect any assessment for audit");
+  });
+
+  after(() => {
+    try {
+      const uids = ["usr_test_audit_574", "usr_owner_secure_1", "usr_intruder_2"];
+      db.prepare(`DELETE FROM assessments WHERE user_id IN (?, ?, ?)`).run(...uids);
+      db.prepare(`DELETE FROM users WHERE id IN (?, ?, ?)`).run(...uids);
+    } catch {}
   });
 });

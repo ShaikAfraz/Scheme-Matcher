@@ -19,8 +19,8 @@ export default function AdminLogin({
   setScreen,
   onBack,
 }) {
-  const [adminEmail, setAdminEmail] = useState("admin@schemematcher.gov.in");
-  const [adminPassword, setAdminPassword] = useState("AdminScheme@2026");
+  const [adminEmail, setAdminEmail] = useState("yuvrajc5027@gmail.com");
+  const [adminPassword, setAdminPassword] = useState("yuvraj1234");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isDenied, setIsDenied] = useState(false);
@@ -154,7 +154,7 @@ export default function AdminLogin({
               type="email"
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
-              placeholder="admin@schemematcher.gov.in"
+              placeholder="yuvrajc5027@gmail.com"
               style={inputStyle}
               required
             />
@@ -175,8 +175,8 @@ export default function AdminLogin({
           </div>
 
           <div style={{ background: "#F8F6F0", border: `1px solid ${RULE}`, borderRadius: 4, padding: "8px 12px", marginBottom: 18, fontSize: 11.5, color: "#475569" }}>
-            <strong>Default Evaluation Credentials:</strong><br />
-            <code>admin@schemematcher.gov.in</code> / <code>AdminScheme@2026</code>
+            <strong>Administrator Credentials:</strong><br />
+            <code>yuvrajc5027@gmail.com</code> / <code>yuvraj1234</code> (Administrator: Yuvraj Choudhary)
           </div>
 
           <button

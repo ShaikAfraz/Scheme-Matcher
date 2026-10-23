@@ -124,6 +124,8 @@ describe("Bank Dossier & Administrative Portal Comprehensive Test Suite", () => 
     try {
       if (citizen1Id || citizen2Id) {
         db.prepare("DELETE FROM dossiers WHERE user_id IN (?, ?)").run(citizen1Id, citizen2Id);
+        db.prepare("DELETE FROM document_verification_history WHERE user_id IN (?, ?)").run(citizen1Id, citizen2Id);
+        db.prepare("DELETE FROM documents WHERE user_id IN (?, ?)").run(citizen1Id, citizen2Id);
       }
       if (citizen1Id || citizen2Id || adminId) {
         db.prepare("DELETE FROM sessions WHERE user_id IN (?, ?, ?)").run(citizen1Id, citizen2Id, adminId);

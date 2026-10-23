@@ -46,6 +46,8 @@ describe("Comprehensive Security & Authentication Flows Suite", () => {
 
   after(async () => {
     try {
+      db.prepare("DELETE FROM document_verification_history WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%@test.in' OR email LIKE '%@gov.in')").run();
+      db.prepare("DELETE FROM documents WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%@test.in' OR email LIKE '%@gov.in')").run();
       db.prepare("DELETE FROM schemes WHERE id LIKE 'SCH_ADM_%' OR id LIKE 'TEST-%'").run();
       db.prepare("DELETE FROM users WHERE email LIKE '%@test.in' OR email LIKE '%@gov.in'").run();
     } catch (_) {}

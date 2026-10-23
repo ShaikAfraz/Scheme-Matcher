@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   initDatabase,
@@ -105,5 +105,14 @@ describe("Authentication & Session Management Module", () => {
 
     assert.equal(getSessionUser(s1.token), null);
     assert.equal(getSessionUser(s2.token), null);
+  });
+
+  after(() => {
+    try {
+      if (testUserId) {
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").run(testUserId);
+        db.prepare("DELETE FROM users WHERE id = ?").run(testUserId);
+      }
+    } catch {}
   });
 });
