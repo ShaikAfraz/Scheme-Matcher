@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production and build outputs
+dist/
+build/
+
+# Environment files and credentials (API keys, secrets)
+.env
+.env.*
+!.env.example
+backend/.env
+
+# Local SQLite databases, runtime and WAL journal files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Operating System and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Temporary / uploaded files & logs
+uploads/
+*.log
