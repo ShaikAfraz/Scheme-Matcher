@@ -22,7 +22,13 @@ import {
   deleteApplication,
   lookupPublicApplication,
   getAllDocuments,
+  getDocumentById,
   saveDocument,
+  saveVerifiedDocument,
+  deleteDocument,
+  getDocumentHistory,
+  findConflictingDocument,
+  logDocumentHistory,
   saveAssessment,
   getUserAssessments,
   getAssessmentById,
@@ -45,17 +51,25 @@ import {
   getAdminOverviewStats,
 } from "./db.js";
 import { sanitizeString, validateEmailOrMobile } from "./security.js";
+import {
+  validateUploadPayload,
+  storeDocumentFile,
+  readDocumentFile,
+  deleteDocumentFile,
+} from "./storage.js";
+import { extractStructuredDocument } from "./verification/extractor.js";
+import { verifyDocument } from "./verification/engine.js";
 import "./seed.js";
 
-// Helper to parse JSON request bodies safely
+// Helper to parse JSON request bodies safely (supports base64 documents up to 15MB)
 async function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      // Safeguard: reject payloads larger than 2MB
-      if (body.length > 2 * 1024 * 1024) {
-        reject(new Error("Payload too large"));
+      // Safeguard: reject payloads larger than 15MB
+      if (body.length > 15 * 1024 * 1024) {
+        reject(new Error("Payload too large: Exceeds statutory document upload ceiling of 15MB."));
       }
     });
     req.on("end", () => {
@@ -505,8 +519,10 @@ export function createDatabaseApiMiddleware() {
       }
 
       // ---------------------------------------------------------
-      // DOCUMENT ENDPOINTS (SECURED)
+      // REAL DOCUMENT UPLOAD, VERIFICATION & STORAGE ENDPOINTS
       // ---------------------------------------------------------
+
+      // 1. List citizen vault documents
       if (pathname === "/api/documents" && req.method === "GET") {
         const authUser = getAuthUser(req);
         if (!authUser) {
@@ -516,6 +532,131 @@ export function createDatabaseApiMiddleware() {
         return sendJson(res, 200, { success: true, count: docs.length, documents: docs }, req);
       }
 
+      // 2. Real Document Upload & Deterministic Verification Pipeline
+      if (pathname === "/api/documents/upload" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to upload documents." }, req);
+        }
+
+        try {
+          const body = await parseJsonBody(req);
+          const { filename, fileType, fileData, typeId, typeLabel, schemeId, notes } = body;
+
+          if (!fileData) {
+            return sendJson(res, 400, { success: false, error: "File data (base64) is required." }, req);
+          }
+
+          // Decode base64 buffer
+          const buffer = Buffer.from(fileData, "base64");
+
+          // Validate file size, extension, magic bytes, and compute SHA-256
+          const validated = validateUploadPayload({
+            filename: filename || "document.pdf",
+            buffer,
+            reportedMimeType: fileType,
+          });
+
+          // Generate random secure document ID
+          const docId = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+          // Store file in private object storage (non-public directory)
+          const storedPath = storeDocumentFile({
+            userId: authUser.id,
+            docId,
+            buffer,
+            ext: validated.ext,
+          });
+
+          // Step 1: Extract text and structured fields from PDF / Image
+          const extraction = await extractStructuredDocument(
+            buffer,
+            validated.mimeType,
+            validated.safeFilename,
+            typeId || "other"
+          );
+
+          // Step 2: Check registry for duplicate uploads or conflicting certificate numbers
+          const duplicateChecks = findConflictingDocument({
+            fileHash: validated.fileHash,
+            certificateNumber: extraction.certificateNumber,
+            excludeUserId: authUser.id,
+          });
+
+          // Step 3: Fetch scheme requirements if target scheme specified
+          let targetScheme = null;
+          if (schemeId) {
+            const rawScheme = db.prepare("SELECT * FROM schemes WHERE id = ?").get(schemeId);
+            if (rawScheme) {
+              targetScheme = formatSchemeRow(rawScheme);
+            }
+          }
+
+          // Step 4: Fetch user's profile for deterministic comparison
+          let userProfile = authUser.profileData || {};
+          const dbUser = db.prepare("SELECT profile_data, name FROM users WHERE id = ?").get(authUser.id);
+          if (dbUser && dbUser.profile_data) {
+            try {
+              userProfile = { ...JSON.parse(dbUser.profile_data), name: dbUser.name || authUser.name };
+            } catch {}
+          } else {
+            userProfile.name = authUser.name;
+          }
+
+          // Step 5: Execute deterministic verification rules
+          const verification = verifyDocument({
+            extractedData: {
+              ...extraction,
+              userSelectedType: typeId || "other",
+            },
+            userProfile,
+            scheme: targetScheme,
+            duplicateChecks,
+          });
+
+          // Step 6: Persist in SQLite with full verification metadata
+          const savedDoc = saveVerifiedDocument(
+            {
+              id: docId,
+              name: validated.safeFilename,
+              size: (validated.sizeBytes / 1024).toFixed(1) + " KB",
+              type: typeLabel || `${typeId.toUpperCase()} Certificate`,
+              typeId: typeId || "other",
+              uploadedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              status: verification.status,
+              verificationStatus: verification.status,
+              verificationReason: verification.summary,
+              verificationEvidence: verification.evidence,
+              missingRequirements: verification.missingRequirements,
+              filePath: storedPath,
+              fileHash: validated.fileHash,
+              mimeType: validated.mimeType,
+              sizeBytes: validated.sizeBytes,
+              schemeId: schemeId || null,
+              extractedData: extraction,
+              extractionConfidence: extraction.confidence || 0.0,
+            },
+            authUser.id
+          );
+
+          return sendJson(
+            res,
+            201,
+            {
+              success: true,
+              message: "Document uploaded, securely stored, and evaluated against criteria.",
+              document: savedDoc,
+              verification,
+            },
+            req
+          );
+        } catch (err) {
+          console.error("[API] Document upload error:", err.message);
+          return sendJson(res, 400, { success: false, error: err.message }, req);
+        }
+      }
+
+      // Backward-compatible POST /api/documents
       if (pathname === "/api/documents" && req.method === "POST") {
         const authUser = getAuthUser(req);
         if (!authUser) {
@@ -525,6 +666,165 @@ export function createDatabaseApiMiddleware() {
         const savedDoc = saveDocument(docData, authUser.id);
         return sendJson(res, 201, { success: true, message: "Document record saved.", document: savedDoc }, req);
       }
+
+      // 3. Document Details & Verification Evidence
+      if (pathname.startsWith("/api/documents/") && !pathname.includes("/preview") && !pathname.includes("/download") && !pathname.includes("/history") && !pathname.includes("/reverify") && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        const docId = pathname.replace("/api/documents/", "");
+        const doc = getDocumentById(docId, authUser.id, authUser.systemRole);
+        if (!doc) {
+          return sendJson(res, 404, { success: false, error: "Document not found or access denied." }, req);
+        }
+        return sendJson(res, 200, { success: true, document: doc }, req);
+      }
+
+      // 4. Secure Private Storage Download / Preview (Protected by Auth & Access Policy)
+      if (pathname.startsWith("/api/documents/") && (pathname.endsWith("/download") || pathname.endsWith("/preview")) && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to access private document." }, req);
+        }
+
+        const isDownload = pathname.endsWith("/download");
+        const docId = pathname.replace("/api/documents/", "").replace("/download", "").replace("/preview", "");
+        const doc = getDocumentById(docId, authUser.id, authUser.systemRole);
+
+        if (!doc || !doc.filePath) {
+          return sendJson(res, 404, { success: false, error: "Document file not found or access denied." }, req);
+        }
+
+        const buffer = readDocumentFile(doc.filePath);
+        if (!buffer) {
+          return sendJson(res, 404, { success: false, error: "Underlying file data missing from private storage vault." }, req);
+        }
+
+        const disposition = isDownload ? "attachment" : "inline";
+        res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
+        res.setHeader("Content-Disposition", `${disposition}; filename="${doc.name}"`);
+        res.setHeader("Content-Length", buffer.length);
+        res.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.writeHead(200);
+        res.end(buffer);
+        return;
+      }
+
+      // 5. Verification Timeline History
+      if (pathname.startsWith("/api/documents/") && pathname.endsWith("/history") && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        const docId = pathname.replace("/api/documents/", "").replace("/history", "");
+        const history = getDocumentHistory(docId, authUser.id, authUser.systemRole);
+        return sendJson(res, 200, { success: true, count: history.length, history }, req);
+      }
+
+      // 6. Re-Verify Document against Updated Profile / Scheme Criteria
+      if (pathname.startsWith("/api/documents/") && pathname.endsWith("/reverify") && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        const docId = pathname.replace("/api/documents/", "").replace("/reverify", "");
+        const doc = getDocumentById(docId, authUser.id, authUser.systemRole);
+        if (!doc) {
+          return sendJson(res, 404, { success: false, error: "Document not found or access denied." }, req);
+        }
+
+        const body = await parseJsonBody(req);
+        const schemeId = body.schemeId || doc.schemeId;
+        let targetScheme = null;
+        if (schemeId) {
+          const rawScheme = db.prepare("SELECT * FROM schemes WHERE id = ?").get(schemeId);
+          if (rawScheme) targetScheme = formatSchemeRow(rawScheme);
+        }
+
+        let userProfile = authUser.profileData || {};
+        const dbUser = db.prepare("SELECT profile_data, name FROM users WHERE id = ?").get(authUser.id);
+        if (dbUser && dbUser.profile_data) {
+          try {
+            userProfile = { ...JSON.parse(dbUser.profile_data), name: dbUser.name || authUser.name };
+          } catch {}
+        }
+
+        const duplicateChecks = findConflictingDocument({
+          fileHash: doc.fileHash,
+          certificateNumber: doc.extractedData?.certificateNumber,
+          excludeUserId: authUser.id,
+        });
+
+        const verification = verifyDocument({
+          extractedData: {
+            ...(doc.extractedData || {}),
+            userSelectedType: doc.typeId,
+          },
+          userProfile,
+          scheme: targetScheme,
+          duplicateChecks,
+        });
+
+        const updatedDoc = saveVerifiedDocument(
+          {
+            ...doc,
+            verificationStatus: verification.status,
+            verificationReason: verification.summary,
+            verificationEvidence: verification.evidence,
+            missingRequirements: verification.missingRequirements,
+            schemeId: schemeId || null,
+          },
+          authUser.id
+        );
+
+        return sendJson(res, 200, { success: true, message: "Document re-verified successfully.", document: updatedDoc, verification }, req);
+      }
+
+      // 7. Delete Document Securely
+      if (pathname.startsWith("/api/documents/") && req.method === "DELETE") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        const docId = pathname.replace("/api/documents/", "");
+        try {
+          const doc = getDocumentById(docId, authUser.id, authUser.systemRole);
+          if (!doc) {
+            return sendJson(res, 404, { success: false, error: "Document not found or access denied." }, req);
+          }
+
+          // Check if document is linked to a sanctioned or submitted application
+          const linkedApp = db.prepare(`
+            SELECT id, status FROM applications
+            WHERE user_id = ? AND (status = 'sanctioned' OR status = 'under_review')
+            LIMIT 1
+          `).get(authUser.id);
+
+          if (linkedApp && authUser.systemRole !== "admin") {
+            return sendJson(
+              res,
+              400,
+              {
+                success: false,
+                error: `Document cannot be deleted while application ${linkedApp.id} is actively under review or sanctioned.`,
+              },
+              req
+            );
+          }
+
+          const deletedDoc = deleteDocument(docId, authUser.id, authUser.systemRole);
+          if (deletedDoc && deletedDoc.file_path) {
+            deleteDocumentFile(deletedDoc.file_path);
+          }
+
+          return sendJson(res, 200, { success: true, message: "Document deleted securely from private vault." }, req);
+        } catch (err) {
+          return sendJson(res, 403, { success: false, error: err.message }, req);
+        }
+      }
+
 
       // ---------------------------------------------------------
       // ELIGIBILITY ASSESSMENTS (PERSISTED MATCH HISTORY)

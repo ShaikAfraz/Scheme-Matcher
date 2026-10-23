@@ -84,6 +84,9 @@ export default function UserDashboard({
   const [userApplications, setUserApplications] = useState([]);
   const [loadingApps, setLoadingApps] = useState(false);
 
+  const [vaultDocs, setVaultDocs] = useState([]);
+  const [loadingVault, setLoadingVault] = useState(false);
+
   // Sync state if currentUser changes
   useEffect(() => {
     if (currentUser?.profileData) {
@@ -110,7 +113,20 @@ export default function UserDashboard({
     const token = getStoredAuthToken();
     if (!token) return;
 
-    if (activeTab === "assessments") {
+    if (activeTab === "vault") {
+      setLoadingVault(true);
+      fetch("/api/documents", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.documents)) {
+            setVaultDocs(data.documents);
+          }
+        })
+        .catch((err) => console.warn("Failed to load documents:", err))
+        .finally(() => setLoadingVault(false));
+    } else if (activeTab === "assessments") {
       setLoadingAssessments(true);
       fetch("/api/assessments", {
         headers: { Authorization: `Bearer ${token}` },
@@ -387,6 +403,7 @@ export default function UserDashboard({
       >
         {[
           { id: "profile", label: "Edit Citizen Profile", icon: SlidersHorizontal },
+          { id: "vault", label: "Document Vault & Status", icon: ShieldCheck },
           { id: "assessments", label: "Previous Assessments", icon: FileCheck2 },
           { id: "bookmarks", label: "Saved Schemes", icon: Bookmark },
           { id: "applications", label: "Track Applications", icon: Clock },
@@ -655,6 +672,365 @@ export default function UserDashboard({
               <span>{savingProfile ? "Saving to Database..." : "Save Profile & Refresh Matches"}</span>
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Tab: Document Vault & Verification Records */}
+      {activeTab === "vault" && (
+        <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: 16,
+              marginBottom: 20,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: "0 0 4px 0", fontFamily: serif, fontSize: 18, color: INK }}>
+                Citizen Document Vault &amp; Verification Records
+              </h3>
+              <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>
+                Encrypted, private object-stored credentials verified with deterministic eligibility rules.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setScreen("documents")}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "9px 16px",
+                  background: SEAL,
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 4,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <FolderUp size={15} />
+                <span>Open Full Vault &amp; Upload</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Metric cards */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: 14,
+              marginBottom: 24,
+            }}
+          >
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: `1px solid ${RULE}`,
+                borderRadius: 4,
+                padding: "14px 18px",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#64748B", fontWeight: 500, marginBottom: 4 }}>
+                Total Vault Files
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: INK, fontFamily: serif }}>
+                {vaultDocs.length}
+              </div>
+              <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Encrypted in private storage</div>
+            </div>
+
+            <div
+              style={{
+                background: "#F0FDF4",
+                border: "1px solid #BBF7D0",
+                borderRadius: 4,
+                padding: "14px 18px",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#166534", fontWeight: 600, marginBottom: 4 }}>
+                Verified Against Criteria
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: OK, fontFamily: serif }}>
+                {vaultDocs.filter((d) => d.verificationStatus === "Verified Against Provided Criteria" || d.status === "Verified").length}
+              </div>
+              <div style={{ fontSize: 11, color: "#166534", marginTop: 2 }}>Ready for Bank Dossier</div>
+            </div>
+
+            <div
+              style={{
+                background: "#FFFBEB",
+                border: "1px solid #FDE68A",
+                borderRadius: 4,
+                padding: "14px 18px",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#92400E", fontWeight: 600, marginBottom: 4 }}>
+                Needs Review / Officer
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "#B45309", fontFamily: serif }}>
+                {vaultDocs.filter((d) => d.verificationStatus === "Needs Review" || d.status === "Under Review").length}
+              </div>
+              <div style={{ fontSize: 11, color: "#92400E", marginTop: 2 }}>Routed to Admin Desk</div>
+            </div>
+
+            <div
+              style={{
+                background: "#FEF2F2",
+                border: "1px solid #FECDD3",
+                borderRadius: 4,
+                padding: "14px 18px",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#991B1B", fontWeight: 600, marginBottom: 4 }}>
+                Pending / Discrepancy
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "#DC2626", fontFamily: serif }}>
+                {vaultDocs.filter((d) => d.verificationStatus === "Rejected With Reason" || d.status === "Rejected" || d.verificationStatus === "Pending").length}
+              </div>
+              <div style={{ fontSize: 11, color: "#991B1B", marginTop: 2 }}>Requires replacement</div>
+            </div>
+          </div>
+
+          {loadingVault ? (
+            <div style={{ padding: 40, textAlign: "center", color: "#64748B" }}>
+              Loading document credentials from secure vault...
+            </div>
+          ) : vaultDocs.length === 0 ? (
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: `1px solid ${RULE}`,
+                borderRadius: 4,
+                padding: 36,
+                textAlign: "center",
+              }}
+            >
+              <ShieldCheck size={36} color="#94A3B8" style={{ marginBottom: 12 }} />
+              <div style={{ fontSize: 15, fontWeight: 600, color: INK, marginBottom: 6 }}>
+                No Documents in Private Vault
+              </div>
+              <p style={{ fontSize: 13, color: "#64748B", margin: "0 0 16px 0", maxWidth: 500, marginInline: "auto" }}>
+                Upload your Aadhaar card, Income Certificate, Caste Certificate, or Udyam MSME registration to verify eligibility against government scheme guidelines.
+              </p>
+              <button
+                onClick={() => setScreen("documents")}
+                style={{
+                  padding: "8px 18px",
+                  background: SEAL,
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 4,
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Go to Document Upload &amp; Verification
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {vaultDocs.map((doc) => {
+                const isVerified = doc.verificationStatus === "Verified Against Provided Criteria" || doc.status === "Verified";
+                const isReview = doc.verificationStatus === "Needs Review" || doc.status === "Under Review";
+                const isRejected = doc.verificationStatus === "Rejected With Reason" || doc.status === "Rejected";
+
+                const badgeBg = isVerified ? "#F0FDF4" : isReview ? "#FFFBEB" : isRejected ? "#FEF2F2" : "#F1F5F9";
+                const badgeColor = isVerified ? OK : isReview ? "#92400E" : isRejected ? "#991B1B" : "#475569";
+                const badgeBorder = isVerified ? "#BBF7D0" : isReview ? "#FDE68A" : isRejected ? "#FECDD3" : "#CBD5E1";
+
+                return (
+                  <div
+                    key={doc.id}
+                    style={{
+                      background: "#FFFFFF",
+                      border: `1px solid ${RULE}`,
+                      borderRadius: 4,
+                      padding: "16px 20px",
+                      boxShadow: "0 1px 3px rgba(22, 32, 50, 0.04)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
+                        gap: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 700, fontSize: 15, color: INK }}>
+                            {doc.name || doc.docName}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              background: "#F1F5F9",
+                              color: "#334155",
+                              padding: "2px 8px",
+                              borderRadius: 3,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {doc.type || doc.docType || "Certificate"}
+                          </span>
+                          {doc.schemeId && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                background: "#EFF6FF",
+                                color: "#1E40AF",
+                                border: "1px solid #BFDBFE",
+                                padding: "2px 8px",
+                                borderRadius: 3,
+                                fontWeight: 500,
+                              }}
+                            >
+                              Scheme: {doc.schemeId}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+                          Uploaded {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "Recently"} · Size: {doc.size || doc.docSize || "Encrypted"}
+                          {doc.extractionConfidence ? ` · OCR Confidence: ${(doc.extractionConfidence * 100).toFixed(0)}%` : ""}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            background: badgeBg,
+                            color: badgeColor,
+                            border: `1px solid ${badgeBorder}`,
+                            padding: "4px 10px",
+                            borderRadius: 3,
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                          }}
+                        >
+                          {isVerified && "✓"} {doc.verificationStatus || doc.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Extracted Fields Grid */}
+                    {doc.extractedData && (
+                      <div
+                        style={{
+                          background: "#F8FAFC",
+                          border: `1px solid ${RULE}`,
+                          borderRadius: 4,
+                          padding: "10px 14px",
+                          marginTop: 10,
+                          fontSize: 12,
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        {doc.extractedData.applicantName && (
+                          <div>
+                            <span style={{ color: "#64748B" }}>Extracted Name: </span>
+                            <strong style={{ color: INK }}>{doc.extractedData.applicantName}</strong>
+                          </div>
+                        )}
+                        {doc.extractedData.annualFamilyIncome != null && (
+                          <div>
+                            <span style={{ color: "#64748B" }}>Extracted Income: </span>
+                            <strong style={{ color: OK }}>
+                              ₹{Number(doc.extractedData.annualFamilyIncome).toLocaleString("en-IN")} / yr
+                            </strong>
+                          </div>
+                        )}
+                        {doc.extractedData.certificateNumber && (
+                          <div>
+                            <span style={{ color: "#64748B" }}>Certificate No: </span>
+                            <strong style={{ color: INK, fontFamily: "monospace" }}>
+                              {doc.extractedData.certificateNumber}
+                            </strong>
+                          </div>
+                        )}
+                        {doc.extractedData.issuingAuthority && (
+                          <div>
+                            <span style={{ color: "#64748B" }}>Authority: </span>
+                            <strong style={{ color: INK }}>{doc.extractedData.issuingAuthority}</strong>
+                          </div>
+                        )}
+                        {doc.extractedData.issueDate && (
+                          <div>
+                            <span style={{ color: "#64748B" }}>Issued: </span>
+                            <strong style={{ color: INK }}>{doc.extractedData.issueDate}</strong>
+                          </div>
+                        )}
+                        {doc.extractedData.expiryDate && (
+                          <div>
+                            <span style={{ color: "#64748B" }}>Expiry: </span>
+                            <strong style={{ color: INK }}>{doc.extractedData.expiryDate}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Verification Reason / Evidence */}
+                    {doc.verificationReason && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          fontSize: 12,
+                          color: isVerified ? OK : isReview ? "#92400E" : "#991B1B",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        Evidence: {doc.verificationReason}
+                      </div>
+                    )}
+
+                    {/* Action links */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: 10,
+                        marginTop: 12,
+                        paddingTop: 8,
+                        borderTop: `1px solid ${RULE}`,
+                      }}
+                    >
+                      <button
+                        onClick={() => setScreen("documents")}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: SEAL,
+                          fontWeight: 600,
+                          fontSize: 12,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <span>Manage in Full Vault</span>
+                        <ArrowRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

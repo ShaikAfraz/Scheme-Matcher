@@ -1079,27 +1079,145 @@ export default function AdminDashboard({
                 background: "#F8FAFC",
                 border: "2px solid #334155",
                 borderRadius: 4,
-                padding: 18,
-                marginBottom: 18,
+                padding: 20,
+                marginBottom: 20,
               }}
             >
-              <h4 style={{ margin: "0 0 10px 0", fontSize: 15, color: INK }}>
-                Review Document: {reviewModalDoc.docName} ({reviewModalDoc.userName})
-              </h4>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <h4 style={{ margin: "0 0 4px 0", fontSize: 16, color: INK }}>
+                    Review Document: {reviewModalDoc.docName || reviewModalDoc.name} ({reviewModalDoc.userName})
+                  </h4>
+                  <div style={{ fontSize: 12, color: "#64748B" }}>
+                    Citizen: {reviewModalDoc.userName} · {reviewModalDoc.userEmail} · Category: {reviewModalDoc.docType || reviewModalDoc.type}
+                    {reviewModalDoc.schemeId ? ` · Target Scheme: ${reviewModalDoc.schemeId}` : " · General Vault"}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `/api/documents/${encodeURIComponent(reviewModalDoc.id)}/download?token=${encodeURIComponent(token)}`;
+                      window.open(url, "_blank");
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 12px",
+                      background: "#FFFFFF",
+                      border: `1px solid ${RULE}`,
+                      color: INK,
+                      borderRadius: 4,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <FileText size={14} />
+                    <span>Download / View File</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Extracted Credentials Drawer */}
+              {reviewModalDoc.extractedData && (
+                <div
+                  style={{
+                    background: "#FFFFFF",
+                    border: `1px solid ${RULE}`,
+                    borderRadius: 4,
+                    padding: "12px 16px",
+                    marginBottom: 14,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                    Extracted Structured Credentials (OCR Confidence: {Math.round((reviewModalDoc.extractionConfidence || 0) * 100)}%)
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 10,
+                      fontSize: 12,
+                    }}
+                  >
+                    {reviewModalDoc.extractedData.applicantName && (
+                      <div>
+                        <span style={{ color: "#64748B" }}>Applicant Name: </span>
+                        <strong style={{ color: INK }}>{reviewModalDoc.extractedData.applicantName}</strong>
+                      </div>
+                    )}
+                    {reviewModalDoc.extractedData.annualFamilyIncome != null && (
+                      <div>
+                        <span style={{ color: "#64748B" }}>Annual Income: </span>
+                        <strong style={{ color: OK }}>
+                          ₹{Number(reviewModalDoc.extractedData.annualFamilyIncome).toLocaleString("en-IN")}
+                        </strong>
+                      </div>
+                    )}
+                    {reviewModalDoc.extractedData.certificateNumber && (
+                      <div>
+                        <span style={{ color: "#64748B" }}>Certificate No: </span>
+                        <strong style={{ color: INK, fontFamily: "monospace" }}>
+                          {reviewModalDoc.extractedData.certificateNumber}
+                        </strong>
+                      </div>
+                    )}
+                    {reviewModalDoc.extractedData.issuingAuthority && (
+                      <div>
+                        <span style={{ color: "#64748B" }}>Authority: </span>
+                        <strong style={{ color: INK }}>{reviewModalDoc.extractedData.issuingAuthority}</strong>
+                      </div>
+                    )}
+                    {reviewModalDoc.extractedData.issueDate && (
+                      <div>
+                        <span style={{ color: "#64748B" }}>Issue Date: </span>
+                        <strong style={{ color: INK }}>{reviewModalDoc.extractedData.issueDate}</strong>
+                      </div>
+                    )}
+                    {reviewModalDoc.extractedData.expiryDate && (
+                      <div>
+                        <span style={{ color: "#64748B" }}>Expiry Date: </span>
+                        <strong style={{ color: INK }}>{reviewModalDoc.extractedData.expiryDate}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Automated Verification Evidence / Reason */}
+              {reviewModalDoc.verificationReason && (
+                <div
+                  style={{
+                    background: "#FFFBEB",
+                    border: "1px solid #FDE68A",
+                    borderRadius: 4,
+                    padding: "10px 14px",
+                    fontSize: 12,
+                    color: "#92400E",
+                    marginBottom: 14,
+                  }}
+                >
+                  <strong>Automated Rule Finding: </strong> {reviewModalDoc.verificationReason}
+                </div>
+              )}
+
               <form onSubmit={handleReviewDocument}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10, marginBottom: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr", gap: 10, marginBottom: 12 }}>
                   <div>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                      Verification Decision
+                      Officer Verification Decision
                     </label>
                     <select
                       value={reviewDecision}
                       onChange={(e) => setReviewDecision(e.target.value)}
                       style={inputStyle}
                     >
-                      <option value="Verified">Approve &amp; Mark Verified</option>
-                      <option value="Rejected">Reject (Requires Re-upload)</option>
-                      <option value="Pending">Keep in Pending Review</option>
+                      <option value="Verified Against Provided Criteria">Approve · Verified Against Provided Criteria</option>
+                      <option value="Needs Review">Flag · Needs Further Review</option>
+                      <option value="Rejected With Reason">Reject · Rejected With Reason</option>
                     </select>
                   </div>
                   <div>
@@ -1120,8 +1238,8 @@ export default function AdminDashboard({
                   <button
                     type="submit"
                     style={{
-                      padding: "8px 16px",
-                      background: reviewDecision === "Verified" ? OK : "#DC2626",
+                      padding: "8px 18px",
+                      background: reviewDecision.includes("Verified") ? OK : reviewDecision.includes("Reject") ? "#DC2626" : "#B45309",
                       color: "#FFFFFF",
                       border: "none",
                       borderRadius: 4,
@@ -1164,8 +1282,8 @@ export default function AdminDashboard({
               <thead>
                 <tr style={{ background: "#F8FAFC", borderBottom: `1px solid ${RULE}`, color: INK }}>
                   <th style={{ padding: "10px 14px" }}>Citizen</th>
-                  <th style={{ padding: "10px 14px" }}>Document Type</th>
-                  <th style={{ padding: "10px 14px" }}>File Name</th>
+                  <th style={{ padding: "10px 14px" }}>Document &amp; Scheme</th>
+                  <th style={{ padding: "10px 14px" }}>Extracted Highlights</th>
                   <th style={{ padding: "10px 14px" }}>Uploaded</th>
                   <th style={{ padding: "10px 14px" }}>Status</th>
                   <th style={{ padding: "10px 14px", textAlign: "right" }}>Action</th>
@@ -1185,69 +1303,99 @@ export default function AdminDashboard({
                     </td>
                   </tr>
                 ) : (
-                  documentsQueue.map((doc) => (
-                    <tr key={doc.id} style={{ borderBottom: `1px solid ${RULE}` }}>
-                      <td style={{ padding: "10px 14px", fontWeight: 600, color: INK }}>
-                        {doc.userName}
-                        <div style={{ fontSize: 11, color: "#64748B", fontWeight: 400 }}>{doc.userEmail}</div>
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#334155" }}>
-                        {doc.docType}
-                      </td>
-                      <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 12 }}>
-                        {doc.docName} ({doc.docSize || "PDF"})
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#64748B", fontSize: 12 }}>
-                        {new Date(doc.createdAt).toLocaleDateString()}
-                      </td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            background:
-                              doc.status === "Verified"
-                                ? "#F0FDF4"
-                                : doc.status === "Rejected"
-                                ? "#FEF2F2"
-                                : "#FFFBEB",
-                            color:
-                              doc.status === "Verified"
-                                ? "#166534"
-                                : doc.status === "Rejected"
-                                ? "#991B1B"
-                                : "#92400E",
-                            padding: "2px 8px",
-                            borderRadius: 3,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {doc.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: "10px 14px", textAlign: "right" }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReviewModalDoc(doc);
-                            setReviewDecision(doc.status === "Verified" ? "Verified" : "Verified");
-                            setReviewRemark(doc.verificationRemark || "");
-                          }}
-                          style={{
-                            padding: "5px 10px",
-                            background: "#1E293B",
-                            color: "#FFFFFF",
-                            border: "none",
-                            borderRadius: 3,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Review Case
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  documentsQueue.map((doc) => {
+                    const statusText = doc.verificationStatus || doc.status || "Pending";
+                    const isVerified = statusText.includes("Verified");
+                    const isRejected = statusText.includes("Reject");
+                    const isReview = statusText.includes("Review") || statusText === "Under Review";
+
+                    const badgeBg = isVerified ? "#F0FDF4" : isRejected ? "#FEF2F2" : isReview ? "#FFFBEB" : "#F1F5F9";
+                    const badgeColor = isVerified ? OK : isRejected ? "#991B1B" : isReview ? "#92400E" : "#475569";
+                    const badgeBorder = isVerified ? "#BBF7D0" : isRejected ? "#FECDD3" : isReview ? "#FDE68A" : "#CBD5E1";
+
+                    return (
+                      <tr key={doc.id} style={{ borderBottom: `1px solid ${RULE}` }}>
+                        <td style={{ padding: "10px 14px", fontWeight: 600, color: INK }}>
+                          {doc.userName || "Citizen"}
+                          <div style={{ fontSize: 11, color: "#64748B", fontWeight: 400 }}>{doc.userEmail}</div>
+                        </td>
+                        <td style={{ padding: "10px 14px", color: "#334155" }}>
+                          <div>{doc.docType || doc.type}</div>
+                          <div style={{ fontSize: 11, color: "#64748B", fontFamily: "monospace" }}>
+                            {doc.docName || doc.name} ({doc.docSize || doc.size || "file"})
+                          </div>
+                          {doc.schemeId && (
+                            <span style={{ fontSize: 10, background: "#EFF6FF", color: "#1D4ED8", padding: "1px 6px", borderRadius: 2 }}>
+                              {doc.schemeId}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 14px", fontSize: 12 }}>
+                          {doc.extractedData ? (
+                            <div>
+                              {doc.extractedData.annualFamilyIncome != null && (
+                                <div>Income: ₹{Number(doc.extractedData.annualFamilyIncome).toLocaleString("en-IN")}</div>
+                              )}
+                              {doc.extractedData.certificateNumber && (
+                                <div style={{ fontFamily: "monospace", fontSize: 11, color: "#475569" }}>
+                                  Cert: {doc.extractedData.certificateNumber}
+                                </div>
+                              )}
+                              {doc.extractionConfidence ? (
+                                <div style={{ fontSize: 10, color: "#059669" }}>
+                                  OCR: {Math.round(doc.extractionConfidence * 100)}%
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span style={{ color: "#94A3B8" }}>No OCR extract</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 14px", color: "#64748B", fontSize: 12 }}>
+                          {new Date(doc.createdAt || doc.uploadedAt || Date.now()).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              background: badgeBg,
+                              color: badgeColor,
+                              border: `1px solid ${badgeBorder}`,
+                              padding: "2px 8px",
+                              borderRadius: 3,
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {statusText}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReviewModalDoc(doc);
+                              setReviewDecision(doc.verificationStatus || (doc.status === "Verified" ? "Verified Against Provided Criteria" : "Verified Against Provided Criteria"));
+                              setReviewRemark(doc.verificationNotes || doc.verificationRemark || "");
+                            }}
+                            style={{
+                              padding: "5px 12px",
+                              background: "#1E293B",
+                              color: "#FFFFFF",
+                              border: "none",
+                              borderRadius: 3,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Review Case
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

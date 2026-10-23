@@ -19,6 +19,11 @@ backend/.env
 *.sqlite-wal
 *.db
 
+# Private Object Storage (Citizen uploaded documents)
+storage/
+uploads/
+
+
 # Operating System and IDE files
 .DS_Store
 Thumbs.db

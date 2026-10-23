@@ -19,7 +19,13 @@ export function runMigrations(db) {
     db.prepare("SELECT version FROM schema_migrations").all().map((r) => r.version)
   );
 
+  // Helper to check if a table exists
+  const hasTable = (tableName) => Boolean(
+    db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(tableName)
+  );
+
   // Migration 1: Sessions table, system_role column, and security indices
+
   if (!applied.has(1)) {
     console.log("[Migration] Applying Migration 1: Sessions, system_role, and indices...");
 
@@ -132,11 +138,6 @@ export function runMigrations(db) {
       CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
     `);
 
-    // Helper to check if a table exists
-    const hasTable = (tableName) => Boolean(
-      db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(tableName)
-    );
-
     // 4. Verify and add updated_at columns if table is present
     if (hasTable("users")) {
       const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
@@ -229,5 +230,63 @@ export function runMigrations(db) {
     console.log("[Migration] Migration 5 applied successfully.");
   }
 
+  // -------------------------------------------------------------
+  // MIGRATION 6: Document Verification Workflow & Secure Storage
+  // -------------------------------------------------------------
+  if (!applied.has(6)) {
+    console.log("[Migration] Applying Migration 6: Document Verification Workflow & Secure Storage...");
+
+    if (hasTable("documents")) {
+      const docCols = db.prepare("PRAGMA table_info(documents)").all().map((c) => c.name);
+
+      const addColIfMissing = (name, type) => {
+        if (!docCols.includes(name)) {
+          db.exec(`ALTER TABLE documents ADD COLUMN ${name} ${type};`);
+        }
+      };
+
+      addColIfMissing("file_path", "TEXT");
+      addColIfMissing("file_hash", "TEXT");
+      addColIfMissing("mime_type", "TEXT");
+      addColIfMissing("file_size_bytes", "INTEGER");
+      addColIfMissing("scheme_id", "TEXT");
+      addColIfMissing("extracted_data", "TEXT");
+      addColIfMissing("extraction_confidence", "REAL DEFAULT 0.0");
+      addColIfMissing("verification_reason", "TEXT");
+      addColIfMissing("verification_evidence", "TEXT");
+      addColIfMissing("missing_requirements", "TEXT");
+      addColIfMissing("reviewed_by", "TEXT");
+      addColIfMissing("reviewed_at", "DATETIME");
+      addColIfMissing("updated_at", "DATETIME");
+
+      db.exec("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_documents_scheme_id ON documents(scheme_id);");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_documents_v_status ON documents(verification_status);");
+    }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS document_verification_history (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        previous_status TEXT,
+        new_status TEXT NOT NULL,
+        action TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_role TEXT NOT NULL DEFAULT 'citizen',
+        notes TEXT,
+        evidence_snapshot TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_doc_history_doc ON document_verification_history(document_id);
+      CREATE INDEX IF NOT EXISTS idx_doc_history_user ON document_verification_history(user_id);
+    `);
+
+    db.prepare("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (6, 'document_verification_workflow')").run();
+    console.log("[Migration] Migration 6 applied successfully.");
+  }
+
   console.log("[Migration] Database schema migrations are up to date.");
 }
+

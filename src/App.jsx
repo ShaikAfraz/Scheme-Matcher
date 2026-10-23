@@ -1211,6 +1211,9 @@ export default function App() {
                 setProfile={setProfile}
                 onProceedToMatches={profile.age ? runMatch : () => navigateTo("profile")}
                 onBack={goBack}
+                currentUser={currentUser}
+                authToken={getStoredAuthToken()}
+                schemes={SCHEMES}
               />
             )}
 

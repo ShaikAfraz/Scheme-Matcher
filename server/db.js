@@ -425,42 +425,314 @@ export function lookupPublicApplication(query) {
 }
 
 // -------------------------------------------------------------
-// DOCUMENT OPERATIONS
 // -------------------------------------------------------------
+// DOCUMENT OPERATIONS (VERIFIED STORAGE & AUDIT PIPELINE)
+// -------------------------------------------------------------
+export function formatDocumentRow(d) {
+  if (!d) return null;
+  let extracted = null;
+  let evidence = null;
+  let missing = [];
+
+  try {
+    extracted = typeof d.extracted_data === "string" ? JSON.parse(d.extracted_data) : d.extracted_data || null;
+  } catch {}
+  try {
+    evidence = typeof d.verification_evidence === "string" ? JSON.parse(d.verification_evidence) : d.verification_evidence || null;
+  } catch {}
+  try {
+    missing = typeof d.missing_requirements === "string" ? JSON.parse(d.missing_requirements) : d.missing_requirements || [];
+  } catch {}
+
+  const vStatus = d.verification_status || "Pending";
+  const isVerified =
+    vStatus === "Verified Against Provided Criteria" ||
+    vStatus === "verified" ||
+    vStatus === "Verified" ||
+    d.status === "Verified";
+  const needsReview =
+    vStatus === "Needs Review" ||
+    vStatus === "needs_review" ||
+    d.status === "Under Review";
+  const isRejected =
+    vStatus === "Rejected With Reason" ||
+    vStatus === "rejected" ||
+    d.status === "Rejected";
+
+  return {
+    id: d.id,
+    userId: d.user_id,
+    name: d.name,
+    size: d.size,
+    type: d.type,
+    typeId: d.type_id,
+    uploadedAt: d.uploaded_at,
+    status: d.status || "Pending",
+    verificationStatus: vStatus,
+    verificationReason: d.verification_reason,
+    verificationNotes: d.verification_notes,
+    filePath: d.file_path,
+    fileHash: d.file_hash,
+    mimeType: d.mime_type,
+    sizeBytes: d.file_size_bytes,
+    schemeId: d.scheme_id,
+    extractedData: extracted,
+    extractionConfidence: d.extraction_confidence || 0.0,
+    evidence,
+    missingRequirements: missing,
+    reviewedBy: d.reviewed_by,
+    reviewedAt: d.reviewed_at,
+    createdAt: d.created_at,
+    docName: d.name,
+    docType: d.type,
+    docSize: d.size,
+    userName: d.applicant_name || d.user_name || "Applicant",
+    userEmail: d.applicant_email,
+    userMobile: d.applicant_mobile,
+    isVerified,
+    needsReview,
+    isRejected,
+  };
+}
+
 export function getAllDocuments(userId = null, role = "citizen") {
   if (role === "admin" && !userId) {
     const stmt = db.prepare("SELECT * FROM documents ORDER BY created_at DESC");
-    return stmt.all();
+    return stmt.all().map(formatDocumentRow);
   }
   if (!userId) return [];
   const stmt = db.prepare("SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC");
-  return stmt.all(userId);
+  return stmt.all(userId).map(formatDocumentRow);
 }
 
-export function saveDocument(doc, userId) {
+export function getDocumentById(docId, userId = null, role = "citizen") {
+  const row = db.prepare("SELECT * FROM documents WHERE id = ?").get(docId);
+  if (!row) return null;
+  if (role !== "admin" && row.user_id !== userId) {
+    return null; // Strict per-user access isolation
+  }
+  return formatDocumentRow(row);
+}
+
+export function findConflictingDocument({ fileHash, certificateNumber, excludeUserId }) {
+  let duplicateHashFound = false;
+  let duplicateCertFound = false;
+
+  if (fileHash) {
+    const hashRow = db.prepare(`
+      SELECT id, user_id FROM documents
+      WHERE file_hash = ? AND user_id != ?
+      LIMIT 1
+    `).get(fileHash, excludeUserId || "");
+    if (hashRow) duplicateHashFound = true;
+  }
+
+  if (certificateNumber && certificateNumber.length >= 6) {
+    const certRow = db.prepare(`
+      SELECT id, user_id FROM documents
+      WHERE user_id != ? AND extracted_data LIKE ?
+      LIMIT 1
+    `).get(excludeUserId || "", `%"${certificateNumber}"%`);
+    if (certRow) duplicateCertFound = true;
+  }
+
+  return { duplicateHashFound, duplicateCertFound };
+}
+
+export function saveVerifiedDocument(docData, userId) {
   if (!userId) throw new Error("Authentication required to save documents");
 
-  const docId = doc.id || `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const docId = docData.id || `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const previous = db.prepare("SELECT * FROM documents WHERE id = ?").get(docId);
+
   const stmt = db.prepare(`
-    INSERT INTO documents (id, user_id, name, size, type, type_id, uploaded_at, status)
-    VALUES (@id, @user_id, @name, @size, @type, @type_id, @uploaded_at, @status)
+    INSERT INTO documents (
+      id, user_id, name, size, type, type_id, uploaded_at, status,
+      file_path, file_hash, mime_type, file_size_bytes, scheme_id,
+      extracted_data, extraction_confidence, verification_status,
+      verification_reason, verification_evidence, missing_requirements,
+      updated_at
+    )
+    VALUES (
+      @id, @user_id, @name, @size, @type, @type_id, @uploaded_at, @status,
+      @file_path, @file_hash, @mime_type, @file_size_bytes, @scheme_id,
+      @extracted_data, @extraction_confidence, @verification_status,
+      @verification_reason, @verification_evidence, @missing_requirements,
+      CURRENT_TIMESTAMP
+    )
     ON CONFLICT(id) DO UPDATE SET
-      status = excluded.status
+      name = excluded.name,
+      size = excluded.size,
+      type = excluded.type,
+      type_id = excluded.type_id,
+      status = excluded.status,
+      file_path = excluded.file_path,
+      file_hash = excluded.file_hash,
+      mime_type = excluded.mime_type,
+      file_size_bytes = excluded.file_size_bytes,
+      scheme_id = excluded.scheme_id,
+      extracted_data = excluded.extracted_data,
+      extraction_confidence = excluded.extraction_confidence,
+      verification_status = excluded.verification_status,
+      verification_reason = excluded.verification_reason,
+      verification_evidence = excluded.verification_evidence,
+      missing_requirements = excluded.missing_requirements,
+      updated_at = CURRENT_TIMESTAMP
   `);
 
   stmt.run({
     id: docId,
     user_id: userId,
-    name: doc.name,
-    size: doc.size || "",
-    type: doc.type || "",
-    type_id: doc.typeId || doc.type_id || "other",
-    uploaded_at: doc.uploadedAt || doc.uploaded_at || "Today",
-    status: doc.status || "Verified",
+    name: docData.name,
+    size: docData.size || "",
+    type: docData.type || "",
+    type_id: docData.typeId || docData.type_id || "other",
+    uploaded_at: docData.uploadedAt || docData.uploaded_at || "Today",
+    status: docData.status || docData.verificationStatus || "Pending",
+    file_path: docData.filePath || null,
+    file_hash: docData.fileHash || null,
+    mime_type: docData.mimeType || null,
+    file_size_bytes: docData.sizeBytes || null,
+    scheme_id: docData.schemeId || null,
+    extracted_data:
+      typeof docData.extractedData === "object"
+        ? JSON.stringify(docData.extractedData)
+        : docData.extractedData || null,
+    extraction_confidence: docData.extractionConfidence || 0.0,
+    verification_status: docData.verificationStatus || "Pending",
+    verification_reason: docData.verificationReason || null,
+    verification_evidence:
+      typeof docData.verificationEvidence === "object"
+        ? JSON.stringify(docData.verificationEvidence)
+        : docData.verificationEvidence || null,
+    missing_requirements:
+      typeof docData.missingRequirements === "object"
+        ? JSON.stringify(docData.missingRequirements)
+        : docData.missingRequirements || null,
   });
 
-  return db.prepare("SELECT * FROM documents WHERE id = ?").get(docId);
+  // Record audit and history log
+  logDocumentHistory({
+    documentId: docId,
+    userId,
+    previousStatus: previous ? previous.verification_status : null,
+    newStatus: docData.verificationStatus || "Pending",
+    action: previous ? "DOCUMENT_REPLACED" : "UPLOADED",
+    actorId: userId,
+    actorRole: "citizen",
+    notes: docData.verificationReason || "Document uploaded and evaluated by deterministic verification engine.",
+    evidenceSnapshot: docData.verificationEvidence,
+  });
+
+  recordAuditLog({
+    userId,
+    action: previous ? "DOCUMENT_REPLACE" : "DOCUMENT_UPLOAD",
+    resourceType: "document",
+    resourceId: docId,
+    details: {
+      name: docData.name,
+      type: docData.type,
+      verificationStatus: docData.verificationStatus,
+    },
+  });
+
+  return getDocumentById(docId, userId);
 }
+
+export function saveDocument(doc, userId) {
+  return saveVerifiedDocument(doc, userId);
+}
+
+export function deleteDocument(docId, userId, role = "citizen") {
+  const existing = db.prepare("SELECT * FROM documents WHERE id = ?").get(docId);
+  if (!existing) return null;
+  if (role !== "admin" && existing.user_id !== userId) {
+    throw new Error("Access denied: You do not own this document.");
+  }
+
+  db.prepare("DELETE FROM document_verification_history WHERE document_id = ?").run(docId);
+  db.prepare("DELETE FROM documents WHERE id = ?").run(docId);
+
+  recordAuditLog({
+    userId,
+    action: "DOCUMENT_DELETE",
+    resourceType: "document",
+    resourceId: docId,
+    details: { name: existing.name, type: existing.type },
+  });
+
+  return existing;
+}
+
+export function logDocumentHistory({
+  documentId,
+  userId,
+  previousStatus,
+  newStatus,
+  action,
+  actorId,
+  actorRole = "citizen",
+  notes = null,
+  evidenceSnapshot = null,
+}) {
+  const histId = `dhist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  db.prepare(`
+    INSERT INTO document_verification_history (
+      id, document_id, user_id, previous_status, new_status,
+      action, actor_id, actor_role, notes, evidence_snapshot
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    histId,
+    documentId,
+    userId,
+    previousStatus || null,
+    newStatus,
+    action,
+    actorId,
+    actorRole,
+    notes || null,
+    typeof evidenceSnapshot === "object" ? JSON.stringify(evidenceSnapshot) : evidenceSnapshot || null
+  );
+  return histId;
+}
+
+export function getDocumentHistory(docId, userId = null, role = "citizen") {
+  const doc = db.prepare("SELECT user_id FROM documents WHERE id = ?").get(docId);
+  if (!doc) return [];
+  if (role !== "admin" && doc.user_id !== userId) {
+    return [];
+  }
+  const rows = db.prepare(`
+    SELECT h.*, u.name as actor_name
+    FROM document_verification_history h
+    LEFT JOIN users u ON h.actor_id = u.id
+    WHERE h.document_id = ?
+    ORDER BY h.created_at ASC
+  `).all(docId);
+
+  return rows.map((r) => {
+    let snapshot = null;
+    try {
+      snapshot = r.evidence_snapshot ? JSON.parse(r.evidence_snapshot) : null;
+    } catch {}
+    return {
+      id: r.id,
+      documentId: r.document_id,
+      userId: r.user_id,
+      previousStatus: r.previous_status,
+      newStatus: r.new_status,
+      action: r.action,
+      actorId: r.actor_id,
+      actorRole: r.actor_role,
+      actorName: r.actor_name,
+      notes: r.notes,
+      evidenceSnapshot: snapshot,
+      createdAt: r.created_at,
+    };
+  });
+}
+
 
 // -------------------------------------------------------------
 // USER PROFILE UPDATES (PERMANENT PERSISTENCE)
@@ -1094,28 +1366,56 @@ export function getAdminDocumentsQueue({ status = null, limit = 100 } = {}) {
   query += " ORDER BY d.created_at DESC LIMIT ?";
   params.push(limit);
 
-  return db.prepare(query).all(...params);
+  return db.prepare(query).all(...params).map(formatDocumentRow);
 }
 
 export function adminReviewDocument(docId, { verificationStatus, verificationNotes, reviewerAdminId }) {
+  const prevDoc = db.prepare("SELECT * FROM documents WHERE id = ?").get(docId);
+  if (!prevDoc) return false;
+
+  let canonStatus = verificationStatus;
+  let statusDisplay = "Under Review";
+  if (verificationStatus === "verified" || verificationStatus === "Verified Against Provided Criteria") {
+    canonStatus = "Verified Against Provided Criteria";
+    statusDisplay = "Verified";
+  } else if (verificationStatus === "rejected" || verificationStatus === "Rejected With Reason") {
+    canonStatus = "Rejected With Reason";
+    statusDisplay = "Rejected";
+  } else if (verificationStatus === "needs_review" || verificationStatus === "Needs Review") {
+    canonStatus = "Needs Review";
+    statusDisplay = "Under Review";
+  }
+
   const stmt = db.prepare(`
     UPDATE documents
-    SET verification_status = ?, status = ?, verification_notes = ?
+    SET verification_status = ?, status = ?, verification_notes = ?,
+        reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
-  const statusDisplay = verificationStatus === "verified" ? "Verified" : verificationStatus === "rejected" ? "Rejected" : "Under Review";
-  const res = stmt.run(verificationStatus, statusDisplay, verificationNotes || "", docId);
+  const res = stmt.run(canonStatus, statusDisplay, verificationNotes || "", reviewerAdminId || null, docId);
+
+  logDocumentHistory({
+    documentId: docId,
+    userId: prevDoc.user_id,
+    previousStatus: prevDoc.verification_status,
+    newStatus: canonStatus,
+    action: "MANUAL_REVIEW",
+    actorId: reviewerAdminId,
+    actorRole: "admin",
+    notes: verificationNotes || "Administrative determination recorded at Verification Desk.",
+  });
 
   recordAuditLog({
     userId: reviewerAdminId,
     action: "DOCUMENT_REVIEW",
     resourceType: "document",
     resourceId: docId,
-    details: { verificationStatus, verificationNotes },
+    details: { verificationStatus: canonStatus, verificationNotes },
   });
 
   return res.changes > 0;
 }
+
 
 // -------------------------------------------------------------
 // ADMIN OVERVIEW & ANALYTICS
