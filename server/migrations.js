@@ -353,6 +353,61 @@ export function runMigrations(db) {
     console.log("[Migration] Migration 7 applied successfully.");
   }
 
+  // -------------------------------------------------------------------------
+  // MIGRATION 8: Bank Dossiers & Scheme Deactivation
+  // -------------------------------------------------------------------------
+  const m8 = db.prepare("SELECT version FROM schema_migrations WHERE version = 8").get();
+  if (!m8) {
+    console.log("[Migration] Applying Migration 8: Bank Dossiers & Scheme Deactivation...");
+
+    // 1. Dossiers Table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dossiers (
+        id TEXT PRIMARY KEY,
+        reference_number TEXT UNIQUE NOT NULL,
+        user_id TEXT NOT NULL,
+        scheme_ids TEXT NOT NULL,
+        profile_snapshot TEXT NOT NULL,
+        eligibility_summary TEXT,
+        documents_summary TEXT,
+        generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_dossiers_user_id ON dossiers(user_id);
+      CREATE INDEX IF NOT EXISTS idx_dossiers_reference ON dossiers(reference_number);
+      CREATE INDEX IF NOT EXISTS idx_dossiers_generated_at ON dossiers(generated_at);
+    `);
+
+    // 2. Add is_active column to schemes if not present
+    if (hasTable("schemes")) {
+      const schemeCols = db.prepare("PRAGMA table_info(schemes)").all().map((c) => c.name);
+      if (!schemeCols.includes("is_active")) {
+        db.exec("ALTER TABLE schemes ADD COLUMN is_active INTEGER DEFAULT 1;");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_schemes_is_active ON schemes(is_active);");
+        db.exec("UPDATE schemes SET is_active = 1 WHERE is_active IS NULL;");
+      }
+    }
+
+    db.prepare("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (8, 'bank_dossiers_and_active_schemes')").run();
+    console.log("[Migration] Migration 8 applied successfully.");
+  }
+
+  // Ensure audit_logs supports both actor_id / target_id and user_id / resource_id
+  if (hasTable("audit_logs")) {
+    const auditCols = db.prepare("PRAGMA table_info(audit_logs)").all().map((c) => c.name);
+    if (!auditCols.includes("actor_id")) {
+      db.exec("ALTER TABLE audit_logs ADD COLUMN actor_id TEXT;");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id);");
+      db.exec("UPDATE audit_logs SET actor_id = user_id WHERE actor_id IS NULL;");
+    }
+    if (!auditCols.includes("target_id")) {
+      db.exec("ALTER TABLE audit_logs ADD COLUMN target_id TEXT;");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_target_id ON audit_logs(target_id);");
+      db.exec("UPDATE audit_logs SET target_id = resource_id WHERE target_id IS NULL;");
+    }
+  }
+
   console.log("[Migration] Database schema migrations are up to date.");
 }
+
 

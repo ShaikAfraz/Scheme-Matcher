@@ -22,6 +22,9 @@ import {
   Activity,
   FileText,
   Filter,
+  Power,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { INK, PAPER, CARD, SEAL, OK, VERIFY, NO, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
 import { getStoredAuthToken } from "../data/demoProfiles.js";
@@ -37,11 +40,17 @@ export default function AdminDashboard({
 
   // Schemes Management State
   const [schemes, setSchemes] = useState([]);
+  const [totalSchemes, setTotalSchemes] = useState(0);
   const [schemeSearch, setSchemeSearch] = useState("");
   const [schemeLevelFilter, setSchemeLevelFilter] = useState("ALL");
+  const [schemeActiveFilter, setSchemeActiveFilter] = useState("all"); // 'all' | 'active' | 'inactive'
+  const [schemeStatusFilter, setSchemeStatusFilter] = useState("all"); // 'all' | 'verified' | 'unverified'
+  const [schemePage, setSchemePage] = useState(1);
+  const schemePageSize = 10;
   const [loadingSchemes, setLoadingSchemes] = useState(false);
   const [editingScheme, setEditingScheme] = useState(null); // null or scheme obj
   const [isCreatingScheme, setIsCreatingScheme] = useState(false);
+  const [schemeFormErrors, setSchemeFormErrors] = useState([]);
   const [schemeForm, setSchemeForm] = useState({
     code: "",
     name: "",
@@ -51,14 +60,24 @@ export default function AdminDashboard({
     financialAssistance: "",
     description: "",
     portalUrl: "https://myscheme.gov.in",
+    source: "",
+    minAge: "",
+    maxAge: "",
+    incomeLimit: "",
   });
 
   // Documents Queue State
   const [documentsQueue, setDocumentsQueue] = useState([]);
+  const [totalDocs, setTotalDocs] = useState(0);
+  const [docStatusFilter, setDocStatusFilter] = useState("Needs Review"); // Default to Needs Review
+  const [docSearch, setDocSearch] = useState("");
+  const [docPage, setDocPage] = useState(1);
+  const docPageSize = 10;
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [reviewModalDoc, setReviewModalDoc] = useState(null);
-  const [reviewDecision, setReviewDecision] = useState("Verified");
+  const [reviewDecision, setReviewDecision] = useState("Verified Against Provided Criteria");
   const [reviewRemark, setReviewRemark] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   // Citizens Registry State
   const [citizens, setCitizens] = useState([]);
@@ -88,34 +107,74 @@ export default function AdminDashboard({
       .finally(() => setLoadingStats(false));
   };
 
-  // Load Schemes
+  // Load Schemes with Search, Filter & Pagination
   const loadSchemes = () => {
     if (!token || !isAdmin) return;
     setLoadingSchemes(true);
-    fetch("/api/admin/schemes", {
+    const params = new URLSearchParams({
+      search: schemeSearch,
+      level: schemeLevelFilter === "ALL" ? "all" : schemeLevelFilter,
+      active: schemeActiveFilter,
+      status: schemeStatusFilter,
+      limit: String(schemePageSize),
+      offset: String((schemePage - 1) * schemePageSize),
+    });
+    fetch(`/api/admin/schemes?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.schemes)) {
           setSchemes(data.schemes);
+          setTotalSchemes(data.total ?? data.schemes.length);
         }
       })
       .catch((err) => console.warn("Failed to load admin schemes:", err))
       .finally(() => setLoadingSchemes(false));
   };
 
-  // Load Documents Queue
+  // Toggle Scheme Active/Inactive Status
+  const handleToggleActive = async (schemeId, currentActive) => {
+    try {
+      const res = await fetch(`/api/admin/schemes/${encodeURIComponent(schemeId)}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: !currentActive }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showSuccess(currentActive ? "Scheme deactivated successfully." : "Scheme activated successfully.");
+        loadSchemes();
+        loadStats();
+      } else {
+        showError(data.error || "Failed to update scheme status.");
+      }
+    } catch (err) {
+      showError(err.message);
+    }
+  };
+
+  // Load Documents Queue with Filter & Pagination
   const loadDocuments = () => {
     if (!token || !isAdmin) return;
     setLoadingDocs(true);
-    fetch("/api/admin/documents", {
+    const params = new URLSearchParams({
+      status: docStatusFilter,
+      search: docSearch,
+      limit: String(docPageSize),
+      offset: String((docPage - 1) * docPageSize),
+    });
+    fetch(`/api/admin/documents?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.documents)) {
           setDocumentsQueue(data.documents);
+          setTotalDocs(data.total ?? data.documents.length);
         }
       })
       .catch((err) => console.warn("Failed to load documents queue:", err))
@@ -148,7 +207,15 @@ export default function AdminDashboard({
   useEffect(() => {
     if (!isAdmin || !token) return;
     if (activeTab === "schemes") loadSchemes();
+  }, [activeTab, schemeSearch, schemeLevelFilter, schemeActiveFilter, schemeStatusFilter, schemePage, isAdmin, token]);
+
+  useEffect(() => {
+    if (!isAdmin || !token) return;
     if (activeTab === "documents") loadDocuments();
+  }, [activeTab, docStatusFilter, docSearch, docPage, isAdmin, token]);
+
+  useEffect(() => {
+    if (!isAdmin || !token) return;
     if (activeTab === "citizens") loadCitizens();
   }, [activeTab, isAdmin, token]);
 
@@ -211,6 +278,7 @@ export default function AdminDashboard({
 
   const handleSaveScheme = async (e) => {
     e.preventDefault();
+    setSchemeFormErrors([]);
     try {
       if (isCreatingScheme) {
         const res = await fetch("/api/admin/schemes", {
@@ -225,10 +293,12 @@ export default function AdminDashboard({
         if (res.ok && data.success) {
           showSuccess("New scheme added to codified catalog!");
           setIsCreatingScheme(false);
+          setSchemeFormErrors([]);
           loadSchemes();
           loadStats();
         } else {
-          showError(data.error || "Failed to create scheme.");
+          setSchemeFormErrors(data.errors || [data.error || "Failed to create scheme."]);
+          showError(data.error || "Scheme validation failed.");
         }
       } else if (editingScheme) {
         const res = await fetch(`/api/admin/schemes/${encodeURIComponent(editingScheme.id)}`, {
@@ -243,9 +313,12 @@ export default function AdminDashboard({
         if (res.ok && data.success) {
           showSuccess("Scheme parameters updated successfully.");
           setEditingScheme(null);
+          setSchemeFormErrors([]);
           loadSchemes();
+          loadStats();
         } else {
-          showError(data.error || "Failed to update scheme.");
+          setSchemeFormErrors(data.errors || [data.error || "Failed to update scheme."]);
+          showError(data.error || "Scheme update validation failed.");
         }
       }
     } catch (err) {
@@ -257,6 +330,7 @@ export default function AdminDashboard({
   const handleReviewDocument = async (e) => {
     e.preventDefault();
     if (!reviewModalDoc) return;
+    setSubmittingReview(true);
     try {
       const res = await fetch(`/api/admin/documents/${encodeURIComponent(reviewModalDoc.id)}/review`, {
         method: "PATCH",
@@ -271,7 +345,7 @@ export default function AdminDashboard({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showSuccess(`Document marked as ${reviewDecision}.`);
+        showSuccess(`Document marked as "${reviewDecision}". Recorded in audit log.`);
         setReviewModalDoc(null);
         setReviewRemark("");
         loadDocuments();
@@ -281,6 +355,8 @@ export default function AdminDashboard({
       }
     } catch (err) {
       showError(err.message);
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -612,16 +688,16 @@ export default function AdminDashboard({
                 {stats?.counts?.schemes || 0}
               </div>
               <div style={{ fontSize: 11, color: "#2563EB", marginTop: 4 }}>
-                {stats?.counts?.centralSchemes || 0} Central · {stats?.counts?.stateSchemes || 0} State
+                {stats?.counts?.activeSchemes ?? 0} Active · {stats?.counts?.inactiveSchemes ?? 0} Inactive
               </div>
             </div>
 
             <div style={{ background: "#FFFFFF", border: `1px solid ${RULE}`, borderRadius: 4, padding: 16 }}>
-              <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>SUBMITTED APPLICATIONS</div>
+              <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>BANK LEAD DOSSIERS</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: INK, marginTop: 4 }}>
-                {stats?.counts?.applications || 0}
+                {stats?.counts?.dossiers || 0}
               </div>
-              <div style={{ fontSize: 11, color: "#D97706", marginTop: 4 }}>Under Processing Pipeline</div>
+              <div style={{ fontSize: 11, color: "#1E3A8A", marginTop: 4 }}>Generated &amp; Stored in SQLite</div>
             </div>
 
             <div style={{ background: "#FFFFFF", border: `1px solid ${RULE}`, borderRadius: 4, padding: 16 }}>
@@ -629,15 +705,19 @@ export default function AdminDashboard({
               <div style={{ fontSize: 26, fontWeight: 700, color: INK, marginTop: 4 }}>
                 {stats?.counts?.documentsNeedingReview || 0}
               </div>
-              <div style={{ fontSize: 11, color: "#B91C1C", marginTop: 4 }}>Pending Review Desk</div>
+              <div style={{ fontSize: 11, color: "#B91C1C", marginTop: 4 }}>
+                {stats?.counts?.documentsVerified || 0} Verified · {stats?.counts?.documentsRejected || 0} Rejected
+              </div>
             </div>
 
             <div style={{ background: "#FFFFFF", border: `1px solid ${RULE}`, borderRadius: 4, padding: 16 }}>
-              <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>FUNDS PIPELINE</div>
+              <div style={{ fontSize: 11.5, color: "#64748B", fontWeight: 600 }}>APPLICATION PIPELINE</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: INK, marginTop: 4 }}>
-                ₹{((stats?.counts?.totalSanctionedAmount || 18500000) / 10000000).toFixed(2)} Cr
+                {stats?.counts?.applications || 0}
               </div>
-              <div style={{ fontSize: 11, color: OK, marginTop: 4 }}>Disbursement Total</div>
+              <div style={{ fontSize: 11, color: OK, marginTop: 4 }}>
+                ₹{Number(stats?.counts?.totalRequestedAmount || 0).toLocaleString("en-IN")} Total Loan Requested
+              </div>
             </div>
           </div>
 
@@ -736,30 +816,61 @@ export default function AdminDashboard({
               marginBottom: 16,
             }}
           >
-            <div style={{ display: "flex", gap: 10, flex: 1, minWidth: 260 }}>
-              <div style={{ position: "relative", flex: 1 }}>
+            <div style={{ display: "flex", gap: 10, flex: 1, minWidth: 260, flexWrap: "wrap" }}>
+              <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
                 <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "#94A3B8" }} />
                 <input
                   type="text"
                   placeholder="Search scheme name, ministry, code..."
                   value={schemeSearch}
-                  onChange={(e) => setSchemeSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSchemeSearch(e.target.value);
+                    setSchemePage(1);
+                  }}
                   style={{ ...inputStyle, paddingLeft: 30 }}
                 />
               </div>
               <select
                 value={schemeLevelFilter}
-                onChange={(e) => setSchemeLevelFilter(e.target.value)}
-                style={{ ...inputStyle, width: 140 }}
+                onChange={(e) => {
+                  setSchemeLevelFilter(e.target.value);
+                  setSchemePage(1);
+                }}
+                style={{ ...inputStyle, width: 130 }}
               >
                 <option value="ALL">All Levels</option>
                 <option value="Central">Central</option>
                 <option value="State">State</option>
               </select>
+              <select
+                value={schemeActiveFilter}
+                onChange={(e) => {
+                  setSchemeActiveFilter(e.target.value);
+                  setSchemePage(1);
+                }}
+                style={{ ...inputStyle, width: 140 }}
+              >
+                <option value="all">All Active &amp; Inactive</option>
+                <option value="active">Active Only</option>
+                <option value="inactive">Deactivated Only</option>
+              </select>
+              <select
+                value={schemeStatusFilter}
+                onChange={(e) => {
+                  setSchemeStatusFilter(e.target.value);
+                  setSchemePage(1);
+                }}
+                style={{ ...inputStyle, width: 140 }}
+              >
+                <option value="all">All Verification</option>
+                <option value="verified">Verified Only</option>
+                <option value="unverified">Unverified Only</option>
+              </select>
             </div>
 
             <button
               onClick={() => {
+                setSchemeFormErrors([]);
                 setSchemeForm({
                   code: `SCH-${Date.now().toString().slice(-4)}`,
                   name: "",
@@ -769,6 +880,10 @@ export default function AdminDashboard({
                   financialAssistance: "",
                   description: "",
                   portalUrl: "https://myscheme.gov.in",
+                  source: "",
+                  minAge: "",
+                  maxAge: "",
+                  incomeLimit: "",
                 });
                 setIsCreatingScheme(true);
               }}
@@ -803,13 +918,35 @@ export default function AdminDashboard({
               }}
             >
               <h3 style={{ margin: "0 0 14px 0", fontSize: 16, color: INK, fontFamily: serif }}>
-                {isCreatingScheme ? "Codify New Government Scheme" : `Edit Scheme: ${editingScheme.code}`}
+                {isCreatingScheme ? "Codify New Government Scheme" : `Edit Scheme: ${editingScheme.code || editingScheme.id}`}
               </h3>
+
+              {schemeFormErrors.length > 0 && (
+                <div
+                  style={{
+                    background: "#FEF2F2",
+                    border: "1px solid #FECACA",
+                    borderRadius: 4,
+                    padding: "10px 14px",
+                    marginBottom: 14,
+                  }}
+                >
+                  <div style={{ color: "#991B1B", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
+                    Validation Error: Please resolve the following before saving
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, color: "#B91C1C", fontSize: 12 }}>
+                    {schemeFormErrors.map((err, idx) => (
+                      <li key={idx}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <form onSubmit={handleSaveScheme}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 10, marginBottom: 10 }}>
                   <div>
                     <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                      Scheme Code
+                      Scheme Code *
                     </label>
                     <input
                       type="text"
@@ -821,7 +958,7 @@ export default function AdminDashboard({
                   </div>
                   <div>
                     <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                      Official Scheme Title
+                      Official Scheme Title *
                     </label>
                     <input
                       type="text"
@@ -833,7 +970,7 @@ export default function AdminDashboard({
                   </div>
                   <div>
                     <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                      Level
+                      Jurisdiction Level *
                     </label>
                     <select
                       value={schemeForm.level}
@@ -849,7 +986,7 @@ export default function AdminDashboard({
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                   <div>
                     <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                      Nodal Ministry / Department
+                      Nodal Ministry / Department *
                     </label>
                     <input
                       type="text"
@@ -873,9 +1010,81 @@ export default function AdminDashboard({
                   </div>
                 </div>
 
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Official Portal URL (Must be valid HTTP/HTTPS) *
+                    </label>
+                    <input
+                      type="url"
+                      value={schemeForm.portalUrl}
+                      onChange={(e) => setSchemeForm({ ...schemeForm, portalUrl: e.target.value })}
+                      placeholder="https://myscheme.gov.in"
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Source Reference / Gazette Link
+                    </label>
+                    <input
+                      type="text"
+                      value={schemeForm.source || ""}
+                      onChange={(e) => setSchemeForm({ ...schemeForm, source: e.target.value })}
+                      placeholder="e.g. Ministry Notification No. 12/2024"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Minimum Age (Years)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="120"
+                      value={schemeForm.minAge || ""}
+                      onChange={(e) => setSchemeForm({ ...schemeForm, minAge: e.target.value })}
+                      placeholder="e.g. 18"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Maximum Age (Years)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="120"
+                      value={schemeForm.maxAge || ""}
+                      onChange={(e) => setSchemeForm({ ...schemeForm, maxAge: e.target.value })}
+                      placeholder="e.g. 65"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Annual Family Income Ceiling (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={schemeForm.incomeLimit || ""}
+                      onChange={(e) => setSchemeForm({ ...schemeForm, incomeLimit: e.target.value })}
+                      placeholder="e.g. 800000"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                    Operational Scheme Summary &amp; Eligibility
+                    Operational Scheme Summary &amp; Eligibility Guidelines
                   </label>
                   <textarea
                     rows={3}
@@ -899,13 +1108,14 @@ export default function AdminDashboard({
                       cursor: "pointer",
                     }}
                   >
-                    Save Scheme
+                    Save Scheme Record
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setIsCreatingScheme(false);
                       setEditingScheme(null);
+                      setSchemeFormErrors([]);
                     }}
                     style={{
                       padding: "8px 14px",
@@ -937,125 +1147,272 @@ export default function AdminDashboard({
               <thead>
                 <tr style={{ background: "#F8FAFC", borderBottom: `1px solid ${RULE}`, color: INK }}>
                   <th style={{ padding: "10px 14px" }}>Code</th>
-                  <th style={{ padding: "10px 14px" }}>Scheme Name</th>
-                  <th style={{ padding: "10px 14px" }}>Ministry</th>
+                  <th style={{ padding: "10px 14px" }}>Scheme Name &amp; Ministry</th>
                   <th style={{ padding: "10px 14px" }}>Level</th>
-                  <th style={{ padding: "10px 14px" }}>Status</th>
+                  <th style={{ padding: "10px 14px" }}>Criteria Status</th>
+                  <th style={{ padding: "10px 14px" }}>State</th>
+                  <th style={{ padding: "10px 14px" }}>Verification</th>
                   <th style={{ padding: "10px 14px", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loadingSchemes ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: 30, textAlign: "center", color: "#64748B" }}>
-                      Loading schemes catalog...
+                    <td colSpan={7} style={{ padding: 30, textAlign: "center", color: "#64748B" }}>
+                      Loading schemes catalog from SQLite...
                     </td>
                   </tr>
-                ) : filteredSchemes.length === 0 ? (
+                ) : schemes.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: 30, textAlign: "center", color: "#64748B" }}>
+                    <td colSpan={7} style={{ padding: 30, textAlign: "center", color: "#64748B" }}>
                       No schemes matched your search filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredSchemes.slice(0, 50).map((s) => (
-                    <tr key={s.id} style={{ borderBottom: `1px solid ${RULE}` }}>
-                      <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>
-                        {s.code || s.id}
-                      </td>
-                      <td style={{ padding: "10px 14px", fontWeight: 600, color: INK }}>
-                        {s.name}
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#64748B", fontSize: 12 }}>
-                        {s.ministry}
-                      </td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            background: s.level === "Central" ? "#EFF6FF" : "#F0FDF4",
-                            color: s.level === "Central" ? "#1E40AF" : "#166534",
-                            padding: "2px 6px",
-                            borderRadius: 3,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {s.level}
-                        </span>
-                      </td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleVerify(s.id, s.isVerified)}
-                          style={{
-                            border: "none",
-                            background: "none",
-                            cursor: "pointer",
-                            padding: 0,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                          }}
-                          title="Click to toggle verification status"
-                        >
-                          {s.isVerified ? (
-                            <span style={{ color: OK, fontWeight: 600, fontSize: 12 }}>✓ Verified</span>
-                          ) : (
-                            <span style={{ color: "#D97706", fontSize: 12 }}>⏳ Unverified</span>
+                  schemes.map((s) => {
+                    const isActive = s.isActive !== false && s.is_active !== 0;
+                    const isMissingCriteria = s.criteriaCompleteness === "missing_criteria";
+
+                    return (
+                      <tr key={s.id} style={{ borderBottom: `1px solid ${RULE}`, background: isActive ? "#FFFFFF" : "#F8FAFC" }}>
+                        <td style={{ padding: "10px 14px", fontFamily: "monospace", color: "#475569" }}>
+                          {s.code || s.id}
+                        </td>
+                        <td style={{ padding: "10px 14px", fontWeight: 600, color: INK }}>
+                          <div>{s.name}</div>
+                          <div style={{ color: "#64748B", fontSize: 11.5, fontWeight: 400 }}>{s.ministry}</div>
+                          {s.officialUrl && (
+                            <a
+                              href={s.officialUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: "#2563EB", fontSize: 11, textDecoration: "none", display: "inline-block", marginTop: 2 }}
+                            >
+                              {s.officialUrl.replace(/^https?:\/\//, "").slice(0, 32)}...
+                            </a>
                           )}
-                        </button>
-                      </td>
-                      <td style={{ padding: "10px 14px", textAlign: "right" }}>
-                        <div style={{ display: "inline-flex", gap: 6 }}>
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              background: s.level === "Central" ? "#EFF6FF" : "#F0FDF4",
+                              color: s.level === "Central" ? "#1E40AF" : "#166534",
+                              padding: "2px 6px",
+                              borderRadius: 3,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {s.level}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
+                          {isMissingCriteria ? (
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                background: "#FFFBEB",
+                                border: "1px solid #FDE68A",
+                                color: "#B45309",
+                                padding: "2px 6px",
+                                borderRadius: 3,
+                                fontWeight: 600,
+                              }}
+                              title="Missing min age, max age, or income threshold criteria"
+                            >
+                              ⚠ Missing Criteria
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                background: "#F0FDF4",
+                                border: "1px solid #BBF7D0",
+                                color: OK,
+                                padding: "2px 6px",
+                                borderRadius: 3,
+                                fontWeight: 600,
+                              }}
+                            >
+                              ✓ Codified
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              background: isActive ? "#F0FDF4" : "#FEF2F2",
+                              color: isActive ? OK : "#DC2626",
+                              border: `1px solid ${isActive ? "#BBF7D0" : "#FECDD3"}`,
+                              padding: "2px 6px",
+                              borderRadius: 3,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {isActive ? "Active" : "Deactivated"}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
                           <button
                             type="button"
-                            onClick={() => {
-                              setEditingScheme(s);
-                              setSchemeForm({
-                                code: s.code || s.id,
-                                name: s.name,
-                                ministry: s.ministry,
-                                level: s.level || "Central",
-                                category: s.targetBeneficiary || "All Communities",
-                                financialAssistance: s.maxBenefitAmount || "",
-                                description: s.summary || "",
-                                portalUrl: s.officialUrl || "https://myscheme.gov.in",
-                              });
-                            }}
+                            onClick={() => handleToggleVerify(s.id, s.isVerified)}
                             style={{
-                              background: "#F1F5F9",
                               border: "none",
-                              padding: "4px 8px",
-                              borderRadius: 3,
+                              background: "none",
                               cursor: "pointer",
-                              color: INK,
+                              padding: 0,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
                             }}
-                            title="Edit scheme parameters"
+                            title="Click to toggle verification status"
                           >
-                            <Edit2 size={13} />
+                            {s.isVerified ? (
+                              <span style={{ color: OK, fontWeight: 600, fontSize: 12 }}>✓ Verified</span>
+                            ) : (
+                              <span style={{ color: "#D97706", fontSize: 12 }}>⏳ Unverified</span>
+                            )}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteScheme(s.id, s.name)}
-                            style={{
-                              background: "#FEF2F2",
-                              border: "none",
-                              padding: "4px 8px",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              color: "#DC2626",
-                            }}
-                            title="Delete scheme"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(s.id, isActive)}
+                              style={{
+                                background: isActive ? "#FFF1F2" : "#F0FDF4",
+                                border: `1px solid ${isActive ? "#FECDD3" : "#BBF7D0"}`,
+                                color: isActive ? "#BE123C" : OK,
+                                padding: "4px 8px",
+                                borderRadius: 3,
+                                cursor: "pointer",
+                                fontSize: 11.5,
+                                fontWeight: 600,
+                              }}
+                              title={isActive ? "Deactivate scheme from matcher" : "Activate scheme"}
+                            >
+                              {isActive ? "Deactivate" : "Activate"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSchemeFormErrors([]);
+                                setEditingScheme(s);
+                                setSchemeForm({
+                                  code: s.code || s.id,
+                                  name: s.name,
+                                  ministry: s.ministry,
+                                  level: s.level || "Central",
+                                  category: s.targetBeneficiary || "All Communities",
+                                  financialAssistance: s.maxBenefitAmount || "",
+                                  description: s.summary || "",
+                                  portalUrl: s.officialUrl || "https://myscheme.gov.in",
+                                  source: s.source || "",
+                                  minAge: s.minAge || "",
+                                  maxAge: s.maxAge || "",
+                                  incomeLimit: s.incomeLimit || "",
+                                });
+                              }}
+                              style={{
+                                background: "#F1F5F9",
+                                border: "none",
+                                padding: "4px 8px",
+                                borderRadius: 3,
+                                cursor: "pointer",
+                                color: INK,
+                              }}
+                              title="Edit scheme parameters"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteScheme(s.id, s.name)}
+                              style={{
+                                background: "#FEF2F2",
+                                border: "none",
+                                padding: "4px 8px",
+                                borderRadius: 3,
+                                cursor: "pointer",
+                                color: "#DC2626",
+                              }}
+                              title="Delete scheme"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
+
+            {/* Schemes Pagination Footer */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 14px",
+                borderTop: `1px solid ${RULE}`,
+                background: "#F8FAFC",
+                fontSize: 12,
+                color: "#64748B",
+              }}
+            >
+              <div>
+                Showing {totalSchemes === 0 ? 0 : (schemePage - 1) * schemePageSize + 1} to{" "}
+                {Math.min(schemePage * schemePageSize, totalSchemes)} of {totalSchemes} schemes
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setSchemePage((p) => Math.max(1, p - 1))}
+                  disabled={schemePage <= 1}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 10px",
+                    background: schemePage <= 1 ? "#F1F5F9" : "#FFFFFF",
+                    border: `1px solid ${RULE}`,
+                    borderRadius: 3,
+                    cursor: schemePage <= 1 ? "not-allowed" : "pointer",
+                    color: schemePage <= 1 ? "#94A3B8" : INK,
+                    fontWeight: 600,
+                  }}
+                >
+                  <ChevronLeft size={13} />
+                  <span>Previous</span>
+                </button>
+                <span style={{ fontWeight: 600, color: INK, padding: "0 6px" }}>
+                  Page {schemePage} of {Math.max(1, Math.ceil(totalSchemes / schemePageSize))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSchemePage((p) => p + 1)}
+                  disabled={schemePage * schemePageSize >= totalSchemes}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 10px",
+                    background: schemePage * schemePageSize >= totalSchemes ? "#F1F5F9" : "#FFFFFF",
+                    border: `1px solid ${RULE}`,
+                    borderRadius: 3,
+                    cursor: schemePage * schemePageSize >= totalSchemes ? "not-allowed" : "pointer",
+                    color: schemePage * schemePageSize >= totalSchemes ? "#94A3B8" : INK,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>Next</span>
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1063,13 +1420,77 @@ export default function AdminDashboard({
       {/* TAB 3: DOCUMENT VERIFICATION DESK */}
       {activeTab === "documents" && (
         <div>
-          <div style={{ marginBottom: 14 }}>
-            <h3 style={{ margin: "0 0 4px 0", fontFamily: serif, fontSize: 16, color: INK }}>
-              Citizen Document Verification Desk
-            </h3>
-            <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>
-              Review uploaded Aadhaar, Caste Certificates, Udyam MSME, and ITR documents before DLTFC sanction.
-            </p>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: "0 0 4px 0", fontFamily: serif, fontSize: 16, color: INK }}>
+                Citizen Document Verification Desk
+              </h3>
+              <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>
+                Official officer review queue. Review uploaded credentials and record binding verification decisions.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ position: "relative", minWidth: 200 }}>
+                <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "#94A3B8" }} />
+                <input
+                  type="text"
+                  placeholder="Search citizen or document..."
+                  value={docSearch}
+                  onChange={(e) => {
+                    setDocSearch(e.target.value);
+                    setDocPage(1);
+                  }}
+                  style={{ ...inputStyle, paddingLeft: 30 }}
+                />
+              </div>
+
+              <select
+                value={docStatusFilter}
+                onChange={(e) => {
+                  setDocStatusFilter(e.target.value);
+                  setDocPage(1);
+                }}
+                style={{ ...inputStyle, width: 180 }}
+              >
+                <option value="Needs Review">Queue: Needs Review</option>
+                <option value="Verified Against Provided Criteria">Status: Verified</option>
+                <option value="Rejected With Reason">Status: Rejected</option>
+                <option value="Pending">Status: Pending</option>
+                <option value="all">All Documents</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={loadDocuments}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 12px",
+                  background: "#FFFFFF",
+                  border: `1px solid ${RULE}`,
+                  color: INK,
+                  borderRadius: 4,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+                title="Refresh review queue"
+              >
+                <RefreshCw size={13} />
+                <span>Refresh</span>
+              </button>
+            </div>
           </div>
 
           {/* Review Modal */}
@@ -1086,7 +1507,7 @@ export default function AdminDashboard({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div>
                   <h4 style={{ margin: "0 0 4px 0", fontSize: 16, color: INK }}>
-                    Review Document: {reviewModalDoc.docName || reviewModalDoc.name} ({reviewModalDoc.userName})
+                    Review Case: {reviewModalDoc.docName || reviewModalDoc.name} ({reviewModalDoc.userName})
                   </h4>
                   <div style={{ fontSize: 12, color: "#64748B" }}>
                     Citizen: {reviewModalDoc.userName} · {reviewModalDoc.userEmail} · Category: {reviewModalDoc.docType || reviewModalDoc.type}
@@ -1208,7 +1629,7 @@ export default function AdminDashboard({
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2fr", gap: 10, marginBottom: 12 }}>
                   <div>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                      Officer Verification Decision
+                      Officer Verification Decision *
                     </label>
                     <select
                       value={reviewDecision}
@@ -1237,6 +1658,7 @@ export default function AdminDashboard({
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     type="submit"
+                    disabled={submittingReview}
                     style={{
                       padding: "8px 18px",
                       background: reviewDecision.includes("Verified") ? OK : reviewDecision.includes("Reject") ? "#DC2626" : "#B45309",
@@ -1245,10 +1667,11 @@ export default function AdminDashboard({
                       borderRadius: 4,
                       fontWeight: 600,
                       fontSize: 13,
-                      cursor: "pointer",
+                      cursor: submittingReview ? "wait" : "pointer",
+                      opacity: submittingReview ? 0.7 : 1,
                     }}
                   >
-                    Submit Verification Decision
+                    {submittingReview ? "Recording Decision..." : "Submit Verification Decision"}
                   </button>
                   <button
                     type="button"
@@ -1293,13 +1716,13 @@ export default function AdminDashboard({
                 {loadingDocs ? (
                   <tr>
                     <td colSpan={6} style={{ padding: 30, textAlign: "center", color: "#64748B" }}>
-                      Loading document queue...
+                      Loading document queue from database...
                     </td>
                   </tr>
                 ) : documentsQueue.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ padding: 30, textAlign: "center", color: "#64748B" }}>
-                      No documents currently in queue.
+                      No documents currently matching selected filter in review queue.
                     </td>
                   </tr>
                 ) : (
@@ -1399,6 +1822,70 @@ export default function AdminDashboard({
                 )}
               </tbody>
             </table>
+
+            {/* Document Pagination Footer */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 14px",
+                borderTop: `1px solid ${RULE}`,
+                background: "#F8FAFC",
+                fontSize: 12,
+                color: "#64748B",
+              }}
+            >
+              <div>
+                Showing {totalDocs === 0 ? 0 : (docPage - 1) * docPageSize + 1} to{" "}
+                {Math.min(docPage * docPageSize, totalDocs)} of {totalDocs} documents
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setDocPage((p) => Math.max(1, p - 1))}
+                  disabled={docPage <= 1}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 10px",
+                    background: docPage <= 1 ? "#F1F5F9" : "#FFFFFF",
+                    border: `1px solid ${RULE}`,
+                    borderRadius: 3,
+                    cursor: docPage <= 1 ? "not-allowed" : "pointer",
+                    color: docPage <= 1 ? "#94A3B8" : INK,
+                    fontWeight: 600,
+                  }}
+                >
+                  <ChevronLeft size={13} />
+                  <span>Previous</span>
+                </button>
+                <span style={{ fontWeight: 600, color: INK, padding: "0 6px" }}>
+                  Page {docPage} of {Math.max(1, Math.ceil(totalDocs / docPageSize))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDocPage((p) => p + 1)}
+                  disabled={docPage * docPageSize >= totalDocs}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 10px",
+                    background: docPage * docPageSize >= totalDocs ? "#F1F5F9" : "#FFFFFF",
+                    border: `1px solid ${RULE}`,
+                    borderRadius: 3,
+                    cursor: docPage * docPageSize >= totalDocs ? "not-allowed" : "pointer",
+                    color: docPage * docPageSize >= totalDocs ? "#94A3B8" : INK,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>Next</span>
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

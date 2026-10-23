@@ -45,10 +45,17 @@ import {
   getAdminSchemes,
   adminCreateScheme,
   adminUpdateScheme,
+  adminToggleSchemeActive,
+  validateSchemeInput,
   adminDeleteScheme,
   getAdminDocumentsQueue,
   adminReviewDocument,
   getAdminOverviewStats,
+  createDossier,
+  updateDossier,
+  getUserDossiers,
+  getDossierById,
+  formatDossierRow,
 } from "./db.js";
 import { sanitizeString, validateEmailOrMobile } from "./security.js";
 import {
@@ -59,6 +66,7 @@ import {
 } from "./storage.js";
 import { extractStructuredDocument } from "./verification/extractor.js";
 import { verifyDocument } from "./verification/engine.js";
+import { generateBankDossierPdf } from "./dossierPdf.js";
 import "./seed.js";
 
 // Helper to parse JSON request bodies safely (supports base64 documents up to 15MB)
@@ -109,6 +117,21 @@ function sendJson(res, statusCode, data, req = null) {
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
   });
   res.end(JSON.stringify(data));
+}
+
+function sendPdf(res, pdfBuffer, filename = "dossier.pdf", req = null) {
+  const origin = req ? getAllowedOrigin(req) : "http://localhost:5173";
+  res.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Content-Length": pdfBuffer.length,
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+    "Cache-Control": "private, no-cache, no-store, must-revalidate",
+  });
+  res.end(pdfBuffer);
 }
 
 // Extract authenticated user from Authorization header
@@ -957,10 +980,244 @@ export function createDatabaseApiMiddleware() {
       }
 
       // ---------------------------------------------------------
+      // BANK DOSSIERS (CITIZEN & ADMIN ACCESS)
+      // ---------------------------------------------------------
+
+      // 1. Generate & Save New Dossier
+      if (pathname === "/api/dossiers" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to generate a dossier." }, req);
+        }
+
+        const body = await parseJsonBody(req);
+        let schemeIds = body.schemeIds || body.scheme_ids || [];
+        let profileSnapshot = body.profileSnapshot || body.profile || null;
+        let eligibilitySummary = body.eligibilitySummary || body.eligibility_summary || [];
+        let documentsSummary = body.documentsSummary || body.documents_summary || null;
+
+        // Auto-hydrate profile if not passed
+        if (!profileSnapshot) {
+          const u = getUserById(authUser.id, false);
+          profileSnapshot = u ? { ...u, ...(u.profileData || {}) } : { name: authUser.name, email: authUser.email };
+        }
+
+        // Auto-hydrate documents if not passed
+        if (!documentsSummary) {
+          documentsSummary = getAllDocuments(authUser.id);
+        }
+
+        // If schemeIds is empty, check if top schemes exist in recent assessments or bookmarks
+        if (schemeIds.length === 0) {
+          const recentAssessment = db.prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(authUser.id);
+          if (recentAssessment && recentAssessment.top_scheme_id) {
+            schemeIds = [recentAssessment.top_scheme_id];
+          }
+        }
+
+        // If still empty, grab first active scheme from DB to ensure dossier is always printable
+        if (schemeIds.length === 0) {
+          const firstScheme = db.prepare("SELECT id FROM schemes WHERE is_active = 1 LIMIT 1").get();
+          if (firstScheme) schemeIds = [firstScheme.id];
+        }
+
+        // Hydrate eligibility summary if empty
+        if (eligibilitySummary.length === 0 && schemeIds.length > 0) {
+          const placeholders = schemeIds.map(() => "?").join(",");
+          const matchedSchemes = db.prepare(`SELECT * FROM schemes WHERE id IN (${placeholders})`).all(...schemeIds).map(formatSchemeRow);
+          eligibilitySummary = matchedSchemes.map((s) => ({
+            schemeId: s.id,
+            schemeName: s.name,
+            ministry: s.ministry,
+            benefits: s.benefits,
+            portalUrl: s.portalUrl,
+            eligibilityStatus: "Eligible",
+          }));
+        }
+
+        const dossier = createDossier({
+          userId: authUser.id,
+          schemeIds,
+          profileSnapshot,
+          eligibilitySummary,
+          documentsSummary,
+        });
+
+        return sendJson(res, 201, {
+          success: true,
+          message: "Bank Dossier generated and saved successfully.",
+          dossier,
+        }, req);
+      }
+
+      // 2. List User's Dossiers
+      if (pathname === "/api/dossiers" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to view dossiers." }, req);
+        }
+
+        let targetUserId = authUser.id;
+        const requestedUser = url.searchParams.get("userId");
+        if (requestedUser && authUser.systemRole === "admin") {
+          targetUserId = requestedUser;
+        }
+
+        const dossiers = getUserDossiers(targetUserId);
+        return sendJson(res, 200, {
+          success: true,
+          count: dossiers.length,
+          dossiers,
+        }, req);
+      }
+
+      // 3. Download / Stream Dossier PDF (Restricted to Owner and Admin)
+      if (pathname.startsWith("/api/dossiers/") && pathname.endsWith("/pdf") && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to download dossier PDF." }, req);
+        }
+
+        const dossierId = pathname.replace("/api/dossiers/", "").replace("/pdf", "");
+        const dossier = getDossierById(dossierId);
+        if (!dossier) {
+          return sendJson(res, 404, { success: false, error: "Dossier record not found." }, req);
+        }
+
+        // Strict authorization check: Owner or Admin only
+        if (dossier.userId !== authUser.id && authUser.systemRole !== "admin") {
+          return sendJson(res, 403, {
+            success: false,
+            error: "Access denied: You do not have permission to view or download another citizen's dossier.",
+          }, req);
+        }
+
+        // Fetch scheme details for the dossier
+        let schemes = [];
+        if (dossier.schemeIds && dossier.schemeIds.length > 0) {
+          const placeholders = dossier.schemeIds.map(() => "?").join(",");
+          schemes = db.prepare(`SELECT * FROM schemes WHERE id IN (${placeholders})`).all(...dossier.schemeIds).map(formatSchemeRow);
+        }
+        if (schemes.length === 0 && Array.isArray(dossier.eligibilitySummary) && dossier.eligibilitySummary.length > 0) {
+          schemes = dossier.eligibilitySummary.map((s) => ({
+            id: s.schemeId || s.id,
+            name: s.schemeName || s.name,
+            ministry: s.ministry,
+            benefits: s.benefits,
+            portalUrl: s.portalUrl || s.portal_url,
+            eligibilityStatus: s.eligibilityStatus || "Eligible",
+          }));
+        }
+
+        let documents = dossier.documentsSummary;
+        if (!Array.isArray(documents) || documents.length === 0) {
+          documents = getAllDocuments(dossier.userId);
+        }
+
+        const shouldRegenerate = url.searchParams.get("regenerate") === "true";
+        let profile = dossier.profileSnapshot || {};
+        if (shouldRegenerate) {
+          const latestUser = getUserById(dossier.userId, false);
+          if (latestUser) {
+            profile = { ...profile, ...latestUser, ...(latestUser.profileData || {}) };
+          }
+          documents = getAllDocuments(dossier.userId);
+        }
+
+        const pdfBuffer = generateBankDossierPdf({
+          referenceNumber: dossier.referenceNumber,
+          generatedAt: shouldRegenerate ? new Date().toISOString() : dossier.generatedAt,
+          profile,
+          schemes,
+          documents,
+          eligibilityResults: dossier.eligibilitySummary || [],
+        });
+
+        recordAuditLog({
+          userId: authUser.id,
+          action: "DOSSIER_DOWNLOAD_PDF",
+          resourceType: "dossier",
+          resourceId: dossier.id,
+          details: { referenceNumber: dossier.referenceNumber, isRegenerated: shouldRegenerate },
+        });
+
+        return sendPdf(res, pdfBuffer, `${dossier.referenceNumber}.pdf`, req);
+      }
+
+      // 4. Regenerate Existing Dossier with Current Profile & Documents
+      if (pathname.startsWith("/api/dossiers/") && pathname.endsWith("/regenerate") && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to regenerate dossier." }, req);
+        }
+
+        const dossierId = pathname.replace("/api/dossiers/", "").replace("/regenerate", "");
+        const existing = getDossierById(dossierId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, error: "Dossier record not found." }, req);
+        }
+
+        // Strict authorization check: Owner or Admin only
+        if (existing.userId !== authUser.id && authUser.systemRole !== "admin") {
+          return sendJson(res, 403, {
+            success: false,
+            error: "Access denied: You do not have permission to regenerate this dossier.",
+          }, req);
+        }
+
+        const latestUser = getUserById(existing.userId, false);
+        const profileSnapshot = latestUser ? { ...latestUser, ...(latestUser.profileData || {}) } : existing.profileSnapshot;
+        const documentsSummary = getAllDocuments(existing.userId);
+
+        const updatedDossier = updateDossier(existing.id, {
+          profileSnapshot,
+          documentsSummary,
+        });
+
+        recordAuditLog({
+          userId: authUser.id,
+          action: "DOSSIER_REGENERATE",
+          resourceType: "dossier",
+          resourceId: existing.id,
+          details: { referenceNumber: existing.referenceNumber },
+        });
+
+        return sendJson(res, 200, {
+          success: true,
+          message: "Dossier regenerated successfully with latest verified profile and documents.",
+          dossier: updatedDossier,
+        }, req);
+      }
+
+      // 5. Get Dossier Metadata (Restricted to Owner and Admin)
+      if (pathname.startsWith("/api/dossiers/") && !pathname.endsWith("/pdf") && !pathname.endsWith("/regenerate") && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to view dossier." }, req);
+        }
+
+        const dossierId = pathname.replace("/api/dossiers/", "");
+        const dossier = getDossierById(dossierId);
+        if (!dossier) {
+          return sendJson(res, 404, { success: false, error: "Dossier record not found." }, req);
+        }
+
+        // Strict authorization check: Owner or Admin only
+        if (dossier.userId !== authUser.id && authUser.systemRole !== "admin") {
+          return sendJson(res, 403, {
+            success: false,
+            error: "Access denied: Unauthorized citizen access to record.",
+          }, req);
+        }
+
+        return sendJson(res, 200, { success: true, dossier }, req);
+      }
+
+      // ---------------------------------------------------------
       // ADMIN PROTECTED MANAGEMENT ENDPOINTS
       // ---------------------------------------------------------
-      // 1. Admin System & Welfare Overview Analytics
-      if (pathname === "/api/admin/stats" && req.method === "GET") {
+      // 1. Admin System & Welfare Overview Analytics (Supports both /api/admin/metrics and /api/admin/stats)
+      if ((pathname === "/api/admin/stats" || pathname === "/api/admin/metrics") && req.method === "GET") {
         const authUser = getAuthUser(req);
         if (!authUser) {
           return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
@@ -969,10 +1226,10 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
         }
         const stats = getAdminOverviewStats();
-        return sendJson(res, 200, { success: true, stats }, req);
+        return sendJson(res, 200, { success: true, stats, metrics: stats }, req);
       }
 
-      // 2. Admin Schemes List with Filtering & Metadata
+      // 2. Admin Schemes List with Search, Filters & Pagination
       if (pathname === "/api/admin/schemes" && req.method === "GET") {
         const authUser = getAuthUser(req);
         if (!authUser) {
@@ -984,14 +1241,15 @@ export function createDatabaseApiMiddleware() {
         const search = url.searchParams.get("search") || "";
         const level = url.searchParams.get("level") || "all";
         const status = url.searchParams.get("status") || "all";
+        const activeStatus = url.searchParams.get("active") || url.searchParams.get("activeStatus") || "all";
         const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
         const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
 
-        const result = getAdminSchemes({ search, level, verificationStatus: status, limit, offset });
+        const result = getAdminSchemes({ search, level, verificationStatus: status, activeStatus, limit, offset });
         return sendJson(res, 200, { success: true, total: result.total, schemes: result.schemes }, req);
       }
 
-      // 3. Admin Scheme Creation
+      // 3. Admin Scheme Creation with Validation
       if (pathname === "/api/admin/schemes" && req.method === "POST") {
         const authUser = getAuthUser(req);
         if (!authUser) {
@@ -1001,14 +1259,43 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
         }
         const data = await parseJsonBody(req);
-        if (!data.name || data.name.trim().length < 5) {
-          return sendJson(res, 400, { success: false, error: "Scheme name must be at least 5 characters long." }, req);
+        try {
+          const created = adminCreateScheme(data, authUser.id);
+          return sendJson(res, 201, { success: true, message: "Scheme record created successfully.", scheme: created }, req);
+        } catch (err) {
+          return sendJson(res, err.statusCode || 400, {
+            success: false,
+            error: err.message,
+            errors: err.validationErrors || [err.message],
+          }, req);
         }
-        const created = adminCreateScheme(data, authUser.id);
-        return sendJson(res, 201, { success: true, message: "Scheme record created successfully.", scheme: created }, req);
       }
 
-      // 4. Admin Scheme Verification Status Update
+      // 4. Admin Scheme Active Status Toggle (Deactivation / Activation)
+      if (pathname.startsWith("/api/admin/schemes/") && pathname.endsWith("/status") && req.method === "PATCH") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const schemeId = pathname.replace("/api/admin/schemes/", "").replace("/status", "");
+        const data = await parseJsonBody(req);
+        const isActive = data.isActive !== undefined ? Boolean(data.isActive) : (data.is_active !== undefined ? Boolean(data.is_active) : true);
+
+        const updated = adminToggleSchemeActive(schemeId, isActive, authUser.id);
+        if (!updated) {
+          return sendJson(res, 404, { success: false, error: "Scheme not found." }, req);
+        }
+        return sendJson(res, 200, {
+          success: true,
+          message: isActive ? "Scheme activated successfully." : "Scheme deactivated successfully.",
+          scheme: updated,
+        }, req);
+      }
+
+      // 5. Admin Scheme Verification Status Update
       if (pathname.startsWith("/api/admin/schemes/") && pathname.endsWith("/verify") && req.method === "PATCH") {
         const authUser = getAuthUser(req);
         if (!authUser) {
@@ -1029,6 +1316,7 @@ export function createDatabaseApiMiddleware() {
           schemeId,
           {
             verificationStatus,
+            criteriaCompleteness: verificationStatus === "verified" ? "verified" : "requires_verification",
             lastVerifiedDate: data.lastVerifiedDate || new Date().toISOString().split("T")[0],
           },
           authUser.id
@@ -1039,8 +1327,8 @@ export function createDatabaseApiMiddleware() {
         return sendJson(res, 200, { success: true, message: "Scheme verification updated.", scheme: updated }, req);
       }
 
-      // 5. Admin Scheme Update & Delete
-      if (pathname.startsWith("/api/admin/schemes/") && !pathname.endsWith("/verify")) {
+      // 6. Admin Scheme Update & Delete
+      if (pathname.startsWith("/api/admin/schemes/") && !pathname.endsWith("/verify") && !pathname.endsWith("/status")) {
         const authUser = getAuthUser(req);
         if (!authUser) {
           return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
@@ -1052,11 +1340,19 @@ export function createDatabaseApiMiddleware() {
 
         if (req.method === "PUT") {
           const data = await parseJsonBody(req);
-          const updated = adminUpdateScheme(schemeId, data, authUser.id);
-          if (!updated) {
-            return sendJson(res, 404, { success: false, error: "Scheme not found." }, req);
+          try {
+            const updated = adminUpdateScheme(schemeId, data, authUser.id);
+            if (!updated) {
+              return sendJson(res, 404, { success: false, error: "Scheme not found." }, req);
+            }
+            return sendJson(res, 200, { success: true, message: "Scheme record updated.", scheme: updated }, req);
+          } catch (err) {
+            return sendJson(res, err.statusCode || 400, {
+              success: false,
+              error: err.message,
+              errors: err.validationErrors || [err.message],
+            }, req);
           }
-          return sendJson(res, 200, { success: true, message: "Scheme record updated.", scheme: updated }, req);
         }
 
         if (req.method === "DELETE") {
@@ -1068,8 +1364,8 @@ export function createDatabaseApiMiddleware() {
         }
       }
 
-      // 6. Admin Document Verification Desk Queue
-      if (pathname === "/api/admin/documents" && req.method === "GET") {
+      // 7. Admin Document Verification Desk Queue (supports /api/admin/documents and /api/admin/documents/review-queue)
+      if ((pathname === "/api/admin/documents" || pathname === "/api/admin/documents/review-queue") && req.method === "GET") {
         const authUser = getAuthUser(req);
         if (!authUser) {
           return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
@@ -1078,13 +1374,21 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
         }
         const status = url.searchParams.get("status") || "all";
-        const limit = Math.min(Number(url.searchParams.get("limit") || 100), 200);
-        const docs = getAdminDocumentsQueue({ status, limit });
-        return sendJson(res, 200, { success: true, count: docs.length, documents: docs }, req);
+        const search = url.searchParams.get("search") || "";
+        const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+        const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+
+        const result = getAdminDocumentsQueue({ status, search, limit, offset });
+        return sendJson(res, 200, {
+          success: true,
+          total: result.total,
+          count: result.documents.length,
+          documents: result.documents,
+        }, req);
       }
 
-      // 7. Admin Document Review Decision
-      if (pathname.startsWith("/api/admin/documents/") && pathname.endsWith("/review") && req.method === "PATCH") {
+      // 8. Admin Document Review Decision (PATCH & POST supported)
+      if (pathname.startsWith("/api/admin/documents/") && pathname.endsWith("/review") && (req.method === "PATCH" || req.method === "POST")) {
         const authUser = getAuthUser(req);
         if (!authUser) {
           return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
@@ -1094,7 +1398,7 @@ export function createDatabaseApiMiddleware() {
         }
         const docId = pathname.replace("/api/admin/documents/", "").replace("/review", "");
         const data = await parseJsonBody(req);
-        const verificationStatus = data.verificationStatus || data.verification_status || (data.status ? data.status.toLowerCase() : "verified");
+        const verificationStatus = data.verificationStatus || data.verification_status || data.status || "Verified Against Provided Criteria";
         const ok = adminReviewDocument(docId, {
           verificationStatus,
           verificationNotes: data.verificationNotes || data.notes || data.remark || "",
@@ -1103,11 +1407,11 @@ export function createDatabaseApiMiddleware() {
         if (!ok) {
           return sendJson(res, 404, { success: false, error: "Document not found or could not be updated." }, req);
         }
-        const updatedDoc = db.prepare("SELECT * FROM documents WHERE id = ?").get(docId);
+        const updatedDoc = getDocumentById(docId, null, "admin");
         return sendJson(res, 200, { success: true, message: "Document verification status updated successfully.", document: updatedDoc }, req);
       }
 
-      // 8. Admin Citizen Registry List
+      // 9. Admin Citizen Registry List
       if (pathname === "/api/admin/users" && req.method === "GET") {
         const authUser = getAuthUser(req);
         if (!authUser) {

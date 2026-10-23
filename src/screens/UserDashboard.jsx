@@ -21,10 +21,12 @@ import {
   MapPin,
   Calendar,
   Sparkles,
+  FileText,
 } from "lucide-react";
 import { INK, PAPER, CARD, SEAL, OK, VERIFY, NO, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
 import { getStoredAuthToken, setStoredActiveUser } from "../data/demoProfiles.js";
 import { TRANSLATIONS } from "../theme/i18n.js";
+import BankDossierModal from "../components/BankDossierModal.jsx";
 
 const STATES = [
   "Andhra Pradesh",
@@ -90,6 +92,8 @@ export default function UserDashboard({
 
   const [vaultDocs, setVaultDocs] = useState([]);
   const [loadingVault, setLoadingVault] = useState(false);
+
+  const [showDossierModal, setShowDossierModal] = useState(false);
 
   // Sync state if currentUser changes
   useEffect(() => {
@@ -375,6 +379,26 @@ export default function UserDashboard({
           >
             <FolderUp size={14} />
             <span>Vault</span>
+          </button>
+          <button
+            onClick={() => setShowDossierModal(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 14px",
+              background: "#1E3A8A",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: 4,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            title="Generate and view official Lead Bank Dossier"
+          >
+            <FileText size={14} />
+            <span>Bank Dossier</span>
           </button>
           <button
             onClick={onLogout}
@@ -784,7 +808,26 @@ export default function UserDashboard({
                 Encrypted, private object-stored credentials verified with deterministic eligibility rules.
               </p>
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => setShowDossierModal(true)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "9px 16px",
+                  background: "#1E3A8A",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 4,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <FileText size={15} />
+                <span>Bank Dossier &amp; PDF</span>
+              </button>
               <button
                 onClick={() => setScreen("documents")}
                 style={{
@@ -1522,6 +1565,13 @@ export default function UserDashboard({
             </div>
           )}
         </div>
+      )}
+
+      {showDossierModal && (
+        <BankDossierModal
+          currentUser={currentUser}
+          onClose={() => setShowDossierModal(false)}
+        />
       )}
     </div>
   );

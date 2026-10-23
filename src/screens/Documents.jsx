@@ -23,6 +23,7 @@ import {
   Lock,
 } from "lucide-react";
 import { INK, CARD, SEAL, OK, VERIFY, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
+import BankDossierModal from "../components/BankDossierModal.jsx";
 
 const DOCUMENT_TYPES = [
   { id: "aadhaar", label: "Aadhaar Card (Identity & Age Verification)", icon: "🪪" },
@@ -1113,193 +1114,16 @@ export default function Documents({
         </div>
       )}
 
-      {/* BENEFICIARY SUMMARY DOSSIER MODAL (PRINT-FRIENDLY) */}
-      {isDossierOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(2px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: 16,
-          }}
-          onClick={() => setIsDossierOpen(false)}
-        >
-          <div
-            style={{
-              background: "#FFFFFF",
-              border: `1px solid ${RULE}`,
-              borderRadius: 4,
-              padding: "26px",
-              maxWidth: 640,
-              width: "100%",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 10px 30px rgba(22, 32, 50, 0.2)",
-              fontFamily: sans,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header bar of modal */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Landmark size={22} color={SEAL} />
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: SEAL, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                    Preliminary Citizen Dossier
-                  </div>
-                  <div style={{ fontFamily: serif, fontSize: 18, color: INK, fontWeight: 700 }}>
-                    Beneficiary Document Summary Slip
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsDossierOpen(false)}
-                style={{ background: "none", border: "none", color: "#64748B", cursor: "pointer", padding: 4 }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Slip Meta */}
-            <div
-              style={{
-                background: "#F8F6F0",
-                border: `1px solid ${RULE}`,
-                borderRadius: 4,
-                padding: "12px 14px",
-                marginBottom: 16,
-                fontSize: 12,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-              }}
-            >
-              <div>
-                <span style={{ color: "#64748B" }}>Beneficiary Name:</span>{" "}
-                <strong>{profile?.name || currentUser?.name || "Citizen Beneficiary"}</strong>
-              </div>
-              <div>
-                <span style={{ color: "#64748B" }}>Generated At:</span>{" "}
-                <strong>{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</strong>
-              </div>
-              <div>
-                <span style={{ color: "#64748B" }}>Target State:</span>{" "}
-                <strong>{profile?.state || "All India"}</strong>
-              </div>
-              <div>
-                <span style={{ color: "#64748B" }}>Social Category:</span>{" "}
-                <strong>{profile?.category || "General"}</strong>
-              </div>
-              <div>
-                <span style={{ color: "#64748B" }}>Annual Income:</span>{" "}
-                <strong>₹{(Number(profile?.income) || 150000).toLocaleString("en-IN")}</strong>
-              </div>
-              <div>
-                <span style={{ color: "#64748B" }}>Document Status:</span>{" "}
-                <strong style={{ color: OK }}>Checklist Complete</strong>
-              </div>
-            </div>
-
-            {/* Document Table */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: INK, marginBottom: 8 }}>
-                Document Portfolio Inventory ({documents.length} Items):
-              </div>
-              <div style={{ border: `1px solid ${RULE}`, borderRadius: 4, overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: "#F1ECE1", textAlign: "left", color: INK }}>
-                      <th style={{ padding: "6px 10px", borderBottom: `1px solid ${RULE}` }}>#</th>
-                      <th style={{ padding: "6px 10px", borderBottom: `1px solid ${RULE}` }}>Document Name</th>
-                      <th style={{ padding: "6px 10px", borderBottom: `1px solid ${RULE}` }}>Category</th>
-                      <th style={{ padding: "6px 10px", borderBottom: `1px solid ${RULE}` }}>Verification Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {documents.map((d, i) => {
-                      const isV = d.verificationStatus?.includes("Verified") || d.status === "Verified";
-                      return (
-                        <tr key={d.id} style={{ borderBottom: i !== documents.length - 1 ? `1px solid #F1ECE1` : "none" }}>
-                          <td style={{ padding: "6px 10px", color: "#64748B" }}>{i + 1}</td>
-                          <td style={{ padding: "6px 10px", fontWeight: 600, color: INK }}>{d.name}</td>
-                          <td style={{ padding: "6px 10px", color: "#475569" }}>{d.type.split("(")[0]}</td>
-                          <td style={{ padding: "6px 10px", color: isV ? OK : "#B45309", fontWeight: 600 }}>
-                            {isV ? "Criteria Met" : "Under Review"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Statutory Watermark Notice */}
-            <div
-              style={{
-                background: "#FFFBEB",
-                border: "1px solid #FDE68A",
-                borderRadius: 4,
-                padding: "10px 12px",
-                fontSize: 11,
-                color: "#92400E",
-                lineHeight: 1.5,
-                marginBottom: 16,
-              }}
-            >
-              <strong>STATUTORY DISCLAIMER:</strong> This slip is an automated summary generated by Scheme Matcher for citizen record-keeping and preliminary lead-bank submission. It does not constitute a government sanction order, credit guarantee, or official reservation benefit. Final approval requires physical appraisal of original certificates at the lending bank branch or district nodal office.
-            </div>
-
-            {/* Print and Close buttons */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setIsDossierOpen(false)}
-                style={{
-                  padding: "7px 14px",
-                  background: "#FFFFFF",
-                  border: `1px solid ${RULE}`,
-                  borderRadius: 4,
-                  fontSize: 12.5,
-                  cursor: "pointer",
-                }}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "7px 16px",
-                  background: SEAL,
-                  color: "#FFFFFF",
-                  border: "none",
-                  borderRadius: 4,
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <Printer size={13} />
-                <span>Print Dossier Slip</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* FUNCTIONAL BANK DOSSIER MODAL WITH PDF GENERATION, PERSISTENCE & HISTORY */}
+      <BankDossierModal
+        isOpen={isDossierOpen}
+        onClose={() => setIsDossierOpen(false)}
+        currentUser={currentUser}
+        profile={profile}
+        documents={documents}
+        schemes={schemes}
+        initialSchemeId={targetSchemeId}
+      />
     </div>
   );
 }
