@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   UserCheck,
   UserPlus,
@@ -17,6 +17,8 @@ import {
   LogOut,
   Info,
   ChevronLeft,
+  RefreshCw,
+  Lock,
 } from "lucide-react";
 import { DEMO_PROFILES, getCustomUsers, saveCustomUser, setStoredAuthToken } from "../data/demoProfiles.js";
 import { INK, PAPER, CARD, SEAL, OK, VERIFY, NO, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
@@ -50,8 +52,9 @@ export default function Login({
   setScreen,
   onBack,
   lang = "en",
+  initialMode = "signin", // "signin" | "signup" | "recovery"
 }) {
-  const [formMode, setFormMode] = useState("signin"); // "signin" | "signup"
+  const [formMode, setFormMode] = useState(initialMode); // "signin" | "signup" | "recovery"
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -63,6 +66,7 @@ export default function Login({
     email: "",
     mobile: "",
     password: "",
+    confirmPassword: "",
     age: "30",
     gender: "Female",
     state: "Uttar Pradesh",
@@ -77,6 +81,21 @@ export default function Login({
     isTransgender: false,
     isDnt: false,
   });
+
+  // Password Recovery State
+  const [recoveryIdentifier, setRecoveryIdentifier] = useState("");
+  const [recoveryToken, setRecoveryToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [recoveryStep, setRecoveryStep] = useState(1); // 1: request token, 2: reset password
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
+
+  useEffect(() => {
+    if (initialMode) {
+      setFormMode(initialMode);
+    }
+  }, [initialMode]);
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
@@ -116,11 +135,11 @@ export default function Login({
       documents: demo.documents,
       targetSchemes: demo.targetSchemes,
     };
-    onLogin(demoData, "results");
-    setAuthSuccessMsg(`Logged in successfully as ${demo.name}! Transferring to eligible schemes...`);
+    onLogin(demoData, "dashboard");
+    setAuthSuccessMsg(`Logged in successfully as ${demo.name}! Transferring to your citizen dashboard...`);
     if (setScreen) {
       setTimeout(() => {
-        setScreen("results");
+        setScreen("dashboard");
       }, 350);
     }
   };
@@ -168,11 +187,11 @@ export default function Login({
           targetSchemes: data.user.targetSchemes?.length ? data.user.targetSchemes : (matchedDemo ? matchedDemo.targetSchemes : ["PMEGP", "MUDRA"]),
         };
 
-        onLogin(authenticatedUser, "results");
-        setAuthSuccessMsg(`Welcome back, ${authenticatedUser.name}! Transferring to your schemes...`);
+        onLogin(authenticatedUser, "dashboard");
+        setAuthSuccessMsg(`Welcome back, ${authenticatedUser.name}! Transferring to your dashboard...`);
         if (setScreen) {
           setTimeout(() => {
-            setScreen("results");
+            setScreen("dashboard");
           }, 350);
         }
         return;
@@ -197,11 +216,11 @@ export default function Login({
       );
 
       if (matchedCustom && matchedCustom.password === passTrim) {
-        onLogin(matchedCustom, "results");
-        setAuthSuccessMsg(`Welcome back, ${matchedCustom.name}! Transferring to your schemes...`);
+        onLogin(matchedCustom, "dashboard");
+        setAuthSuccessMsg(`Welcome back, ${matchedCustom.name}! Transferring to your dashboard...`);
         if (setScreen) {
           setTimeout(() => {
-            setScreen("results");
+            setScreen("dashboard");
           }, 350);
         }
         return;
@@ -211,7 +230,7 @@ export default function Login({
     }
   };
 
-  // Handle custom citizen signup - Transfers user directly to the next page!
+  // Handle custom citizen signup - Transfers user directly to their dashboard!
   const handleSignUp = async (e) => {
     e.preventDefault();
     setLoginError("");
@@ -224,8 +243,12 @@ export default function Login({
       setLoginError("Please enter a valid mobile number or email address.");
       return;
     }
-    if (!signUpForm.password.trim() || signUpForm.password.length < 4) {
-      setLoginError("Password must be at least 4 characters.");
+    if (!signUpForm.password.trim() || signUpForm.password.length < 6) {
+      setLoginError("Password must be at least 6 characters.");
+      return;
+    }
+    if (signUpForm.confirmPassword && signUpForm.password !== signUpForm.confirmPassword) {
+      setLoginError("Passwords do not match.");
       return;
     }
 
@@ -285,12 +308,12 @@ export default function Login({
         };
 
         saveCustomUser(newUser);
-        onLogin(newUser, "results");
-        setAuthSuccessMsg(`Registration successful! Welcome, ${newUser.name}. Transferring to your matched government schemes...`);
+        onLogin(newUser, "dashboard");
+        setAuthSuccessMsg(`Registration successful! Welcome, ${newUser.name}. Redirecting to your citizen dashboard...`);
 
         if (setScreen) {
           setTimeout(() => {
-            setScreen("results");
+            setScreen("dashboard");
           }, 400);
         }
         return;
@@ -326,20 +349,110 @@ export default function Login({
       };
 
       saveCustomUser(newUser);
-      onLogin(newUser, "results");
-      setAuthSuccessMsg(`Registration saved! Welcome, ${newUser.name}. Transferring...`);
+      onLogin(newUser, "dashboard");
+      setAuthSuccessMsg(`Registration saved! Welcome, ${newUser.name}. Redirecting...`);
 
       if (setScreen) {
         setTimeout(() => {
-          setScreen("results");
+          setScreen("dashboard");
         }, 400);
       }
     }
   };
 
+  // Handle Request Password Reset Token
+  const handleRequestResetToken = async (e) => {
+    e.preventDefault();
+    setLoginError("");
+    setRecoveryNotice("");
+    setRecoveryLoading(true);
+
+    const identTrim = recoveryIdentifier.trim();
+    if (!identTrim) {
+      setLoginError("Please enter your registered email address or mobile number.");
+      setRecoveryLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: identTrim }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRecoveryStep(2);
+        if (data.resetToken) {
+          setRecoveryToken(data.resetToken);
+          setRecoveryNotice(
+            `Security Token Generated: ${data.resetToken}. (Simulated SMS/Email delivery for prototype testing).`
+          );
+        } else {
+          setRecoveryNotice("Password reset instructions sent. Please enter the received verification token.");
+        }
+      } else {
+        setLoginError(data.error || "Unable to process password reset request.");
+      }
+    } catch (err) {
+      setLoginError("Network error requesting reset token: " + err.message);
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
+
+  // Handle Reset Password with Token
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setLoginError("");
+    setRecoveryLoading(true);
+
+    if (!recoveryToken.trim()) {
+      setLoginError("Please enter the recovery token.");
+      setRecoveryLoading(false);
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setLoginError("New password must be at least 6 characters.");
+      setRecoveryLoading(false);
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setLoginError("Passwords do not match.");
+      setRecoveryLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: recoveryToken.trim(),
+          newPassword: newPassword.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAuthSuccessMsg("Password successfully reset! Please sign in with your new credentials.");
+        setFormMode("signin");
+        setRecoveryStep(1);
+        setRecoveryToken("");
+        setNewPassword("");
+        setConfirmNewPassword("");
+        setRecoveryNotice("");
+      } else {
+        setLoginError(data.error || "Failed to reset password. The token may be expired or invalid.");
+      }
+    } catch (err) {
+      setLoginError("Network error resetting password: " + err.message);
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto" }}>
+    <div style={{ maxWidth: 940, margin: "0 auto" }}>
       {/* Back Button */}
       {onBack && (
         <button
@@ -374,10 +487,20 @@ export default function Login({
           </span>
         </div>
         <h2 style={{ fontFamily: serif, fontSize: 26, color: INK, margin: "0 0 6px 0", fontWeight: 700 }}>
-          {currentUser ? `Active Citizen Account: ${currentUser.name}` : "Citizen Access & Verification Personas"}
+          {currentUser
+            ? `Active Citizen Account: ${currentUser.name}`
+            : formMode === "signup"
+            ? "Citizen Registration & Profile Creation"
+            : formMode === "recovery"
+            ? "Secure Password Recovery"
+            : "Citizen Login & Access"}
         </h2>
         <p style={{ fontFamily: sans, fontSize: 13.5, color: "#475569", margin: 0, lineHeight: 1.5 }}>
-          Sign in with your registered mobile or email, register a new citizen profile, or select an authentic citizen persona to test deterministic matching against ministry rules.
+          {formMode === "signup"
+            ? "Create an official citizen account to preserve your demographic parameters, track loan applications, and save matched welfare schemes."
+            : formMode === "recovery"
+            ? "Recover access to your Scheme Matcher account using your registered email or mobile number."
+            : "Sign in with your registered email or mobile, or load an authentic pre-configured citizen persona."}
         </p>
       </div>
 
@@ -459,7 +582,7 @@ export default function Login({
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
-              onClick={() => setScreen("results")}
+              onClick={() => setScreen("dashboard")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -474,11 +597,11 @@ export default function Login({
                 cursor: "pointer",
               }}
             >
-              <span>View Eligible Schemes</span>
+              <span>Go to My Dashboard</span>
               <ArrowRight size={13} />
             </button>
             <button
-              onClick={() => setScreen("profile")}
+              onClick={() => setScreen("results")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -493,7 +616,7 @@ export default function Login({
                 cursor: "pointer",
               }}
             >
-              <span>Review Profile</span>
+              <span>View Schemes</span>
             </button>
             <button
               onClick={onLogout}
@@ -528,7 +651,7 @@ export default function Login({
           alignItems: "start",
         }}
       >
-        {/* COLUMN 1: CITIZEN SIGN IN & SIGN UP */}
+        {/* COLUMN 1: CITIZEN SIGN IN, SIGN UP, OR RECOVERY */}
         <div
           style={{
             background: "#FFFFFF",
@@ -539,99 +662,134 @@ export default function Login({
           }}
         >
           {/* Mode Switcher: Sign In vs Sign Up */}
-          <div
-            style={{
-              display: "flex",
-              borderBottom: `1px solid ${RULE}`,
-              marginBottom: 18,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setFormMode("signin");
-                setLoginError("");
-              }}
+          {formMode !== "recovery" ? (
+            <div
               style={{
-                flex: 1,
-                padding: "10px 14px",
-                fontFamily: sans,
-                fontSize: 13.5,
-                fontWeight: formMode === "signin" ? 700 : 500,
-                border: "none",
-                borderBottom: formMode === "signin" ? `2.5px solid ${SEAL}` : "2.5px solid transparent",
-                background: "none",
-                color: formMode === "signin" ? INK : "#6B7280",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
+                display: "flex",
+                borderBottom: `1px solid ${RULE}`,
+                marginBottom: 18,
               }}
             >
-              <LogIn size={15} color={formMode === "signin" ? SEAL : "#9CA3AF"} />
-              <span>Sign In</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormMode("signin");
+                  setLoginError("");
+                }}
+                style={{
+                  flex: 1,
+                  padding: "9px 12px",
+                  background: "none",
+                  border: "none",
+                  borderBottom: formMode === "signin" ? `2.5px solid ${SEAL}` : "2.5px solid transparent",
+                  color: formMode === "signin" ? INK : "#64748B",
+                  fontFamily: sans,
+                  fontSize: 13,
+                  fontWeight: formMode === "signin" ? 700 : 500,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <LogIn size={14} color={formMode === "signin" ? SEAL : "#64748B"} />
+                <span>Citizen Sign In</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setFormMode("signup");
-                setLoginError("");
-              }}
+              <button
+                type="button"
+                onClick={() => {
+                  setFormMode("signup");
+                  setLoginError("");
+                }}
+                style={{
+                  flex: 1,
+                  padding: "9px 12px",
+                  background: "none",
+                  border: "none",
+                  borderBottom: formMode === "signup" ? `2.5px solid ${SEAL}` : "2.5px solid transparent",
+                  color: formMode === "signup" ? INK : "#64748B",
+                  fontFamily: sans,
+                  fontSize: 13,
+                  fontWeight: formMode === "signup" ? 700 : 500,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <UserPlus size={14} color={formMode === "signup" ? SEAL : "#64748B"} />
+                <span>Register New Profile</span>
+              </button>
+            </div>
+          ) : (
+            <div
               style={{
-                flex: 1,
-                padding: "10px 14px",
-                fontFamily: sans,
-                fontSize: 13.5,
-                fontWeight: formMode === "signup" ? 700 : 500,
-                border: "none",
-                borderBottom: formMode === "signup" ? `2.5px solid ${SEAL}` : "2.5px solid transparent",
-                background: "none",
-                color: formMode === "signup" ? INK : "#6B7280",
-                cursor: "pointer",
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
+                justifyContent: "space-between",
+                borderBottom: `1px solid ${RULE}`,
+                paddingBottom: 12,
+                marginBottom: 18,
               }}
             >
-              <UserPlus size={15} color={formMode === "signup" ? SEAL : "#9CA3AF"} />
-              <span>New Sign Up</span>
-            </button>
-          </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: INK }}>
+                <Lock size={15} color={SEAL} />
+                <span>Password Recovery</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormMode("signin");
+                  setLoginError("");
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: SEAL,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                ← Back to Sign In
+              </button>
+            </div>
+          )}
 
-          {/* Error Message */}
+          {/* Error Banner */}
           {loginError && (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                background: "#FFEBEE",
-                border: `1px solid ${NO}`,
-                borderRadius: 6,
+                background: "#FEF2F2",
+                border: "1px solid #FECACA",
+                borderRadius: 4,
                 padding: "8px 12px",
-                marginBottom: 16,
-                color: NO,
+                marginBottom: 14,
+                color: "#991B1B",
                 fontSize: 12.5,
               }}
             >
-              <AlertCircle size={15} />
+              <AlertCircle size={15} color="#991B1B" />
               <span>{loginError}</span>
             </div>
           )}
 
-          {/* Form: Sign In Mode */}
-          {formMode === "signin" ? (
+          {/* Sub-form 1: Standard Citizen Sign In */}
+          {formMode === "signin" && (
             <form onSubmit={handleSignIn}>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: INK, marginBottom: 5 }}>
-                  Email or Registered Mobile Number
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                  Email Address or 10-Digit Mobile Number
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. ramesh.artisan@demo.gov.in"
+                  placeholder="e.g. kavita.sc@example.in or 9876543210"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   style={inputStyle}
@@ -639,33 +797,55 @@ export default function Login({
                 />
               </div>
 
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: INK, marginBottom: 5 }}>
-                  Password
-                </label>
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: INK }}>
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormMode("recovery");
+                      setRecoveryStep(1);
+                      setLoginError("");
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: SEAL,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
                 <input
                   type="password"
-                  placeholder="Enter password"
+                  placeholder="••••••••"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   style={inputStyle}
                   required
                 />
-                <span style={{ fontSize: 11, color: "#6B7280", marginTop: 4, display: "block" }}>
-                  Demo accounts password: <strong>demo123</strong>
-                </span>
+              </div>
+
+              <div style={{ fontSize: 11.5, color: "#64748B", marginBottom: 16 }}>
+                Demo password for registered accounts is <code>demo123</code>
               </div>
 
               <button
                 type="submit"
                 style={{
                   width: "100%",
-                  padding: "11px 16px",
+                  padding: "10px 16px",
                   background: SEAL,
                   color: "#FFFFFF",
                   border: "none",
                   borderRadius: 4,
-                  fontSize: 14,
+                  fontSize: 13.5,
                   fontWeight: 600,
                   cursor: "pointer",
                   display: "flex",
@@ -674,20 +854,40 @@ export default function Login({
                   gap: 8,
                 }}
               >
-                <LogIn size={16} />
-                <span>Sign In to Scheme Matcher</span>
+                <LogIn size={15} />
+                <span>Sign In to Citizen Dashboard</span>
               </button>
+
+              <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: "#64748B" }}>
+                Don't have an account yet?{" "}
+                <button
+                  type="button"
+                  onClick={() => setFormMode("signup")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: SEAL,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  Register here
+                </button>
+              </div>
             </form>
-          ) : (
-            /* Form: New Citizen Sign Up Mode */
+          )}
+
+          {/* Sub-form 2: Citizen Registration */}
+          {formMode === "signup" && (
             <form onSubmit={handleSignUp}>
-              <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 10 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                  Full Name *
+                  Full Legal Name (as per Aadhaar / PAN)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Anand Shinde"
+                  placeholder="e.g. Ramesh Kumar Verma"
                   value={signUpForm.name}
                   onChange={(e) => setSignUpForm({ ...signUpForm, name: e.target.value })}
                   style={inputStyle}
@@ -695,10 +895,23 @@ export default function Login({
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                    Mobile Number *
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="ramesh@example.com"
+                    value={signUpForm.email}
+                    onChange={(e) => setSignUpForm({ ...signUpForm, email: e.target.value })}
+                    style={inputStyle}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                    10-Digit Mobile Number
                   </label>
                   <input
                     type="tel"
@@ -709,25 +922,41 @@ export default function Login({
                     required
                   />
                 </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                    Password *
+                    Account Password (min 6 chars)
                   </label>
                   <input
                     type="password"
-                    placeholder="Min 4 characters"
+                    placeholder="••••••••"
                     value={signUpForm.password}
                     onChange={(e) => setSignUpForm({ ...signUpForm, password: e.target.value })}
                     style={inputStyle}
                     required
                   />
                 </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    value={signUpForm.confirmPassword}
+                    onChange={(e) => setSignUpForm({ ...signUpForm, confirmPassword: e.target.value })}
+                    style={inputStyle}
+                    required
+                  />
+                </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
                 <div>
                   <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: INK, marginBottom: 4 }}>
-                    Age
+                    Age (Years)
                   </label>
                   <input
                     type="number"
@@ -736,6 +965,7 @@ export default function Login({
                     value={signUpForm.age}
                     onChange={(e) => setSignUpForm({ ...signUpForm, age: e.target.value })}
                     style={inputStyle}
+                    required
                   />
                 </div>
                 <div>
@@ -770,7 +1000,7 @@ export default function Login({
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
                     State / UT
@@ -837,7 +1067,7 @@ export default function Login({
                   color: "#FFFFFF",
                   border: "none",
                   borderRadius: 4,
-                  fontSize: 14,
+                  fontSize: 13.5,
                   fontWeight: 600,
                   cursor: "pointer",
                   display: "flex",
@@ -846,10 +1076,152 @@ export default function Login({
                   gap: 8,
                 }}
               >
-                <UserPlus size={16} />
-                <span>Create Citizen Account & Save Data</span>
+                <UserPlus size={15} />
+                <span>Create Citizen Account &amp; Access Dashboard</span>
               </button>
+
+              <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: "#64748B" }}>
+                Already registered?{" "}
+                <button
+                  type="button"
+                  onClick={() => setFormMode("signin")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: SEAL,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  Sign in
+                </button>
+              </div>
             </form>
+          )}
+
+          {/* Sub-form 3: Password Recovery */}
+          {formMode === "recovery" && (
+            <div>
+              {recoveryNotice && (
+                <div
+                  style={{
+                    background: "#EFF6FF",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: 4,
+                    padding: "10px 12px",
+                    marginBottom: 14,
+                    color: "#1E40AF",
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {recoveryNotice}
+                </div>
+              )}
+
+              {recoveryStep === 1 ? (
+                <form onSubmit={handleRequestResetToken}>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Registered Email Address or Mobile Number
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. kavita.sc@example.in or 9876543210"
+                      value={recoveryIdentifier}
+                      onChange={(e) => setRecoveryIdentifier(e.target.value)}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={recoveryLoading}
+                    style={{
+                      width: "100%",
+                      padding: "10px 16px",
+                      background: SEAL,
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 4,
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      cursor: recoveryLoading ? "wait" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span>{recoveryLoading ? "Generating Token..." : "Send Password Reset Token"}</span>
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleResetPassword}>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Reset Security Token
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Paste recovery token"
+                      value={recoveryToken}
+                      onChange={(e) => setRecoveryToken(e.target.value)}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      New Password (min 6 characters)
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={recoveryLoading}
+                    style={{
+                      width: "100%",
+                      padding: "10px 16px",
+                      background: OK,
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: 4,
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      cursor: recoveryLoading ? "wait" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span>{recoveryLoading ? "Resetting Password..." : "Update Password & Sign In"}</span>
+                  </button>
+                </form>
+              )}
+            </div>
           )}
         </div>
 
@@ -866,11 +1238,11 @@ export default function Login({
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <Sparkles size={16} color={SEAL} />
               <h3 style={{ margin: 0, fontSize: 16, color: INK, fontFamily: serif, fontWeight: 700 }}>
-                Demo Citizen Profiles
+                Demo Citizen Personas
               </h3>
             </div>
             <span style={{ fontSize: 11, color: "#6B7280" }}>
-              1-Click Login (Pre-saved Data)
+              1-Click Instant Login
             </span>
           </div>
 
@@ -960,8 +1332,8 @@ export default function Login({
                       gap: 6,
                     }}
                   >
-                    <span>{isCurrent ? "✓ Active Persona (Reload)" : `Load Persona: ${demo.name}`}</span>
-                    <ArrowRight size={13} />
+                    <span>{isCurrent ? "✓ Currently Active Session" : `Sign In as ${demo.name}`}</span>
+                    {!isCurrent && <ArrowRight size={13} />}
                   </button>
                 </div>
               );

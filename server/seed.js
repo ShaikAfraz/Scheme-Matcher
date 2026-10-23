@@ -1,4 +1,4 @@
-import { db, saveUser, saveApplication, getAllUsers } from "./db.js";
+import { db, saveUser, saveApplication, getAllUsers, createOrUpdateAdminAccount } from "./db.js";
 import { DEMO_PROFILES } from "../src/data/demoProfiles.js";
 import { INITIAL_APPLICATIONS } from "../src/data/appliedSchemes.js";
 import { SCHEMES } from "../src/data/schemes.js";
@@ -23,6 +23,21 @@ export function seedDatabaseIfEmpty() {
         profileData: demo.profileData,
       });
     }
+  }
+
+  // Ensure an official Institutional Administrator account exists
+  const adminEmail = process.env.ADMIN_INITIAL_EMAIL || "admin@schemematcher.gov.in";
+  const existingAdmin = db.prepare("SELECT * FROM users WHERE email = ? AND system_role = 'admin'").get(adminEmail);
+  if (!existingAdmin) {
+    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || "AdminScheme@2026";
+    console.log(`[Database] Seeding default administrator account (${adminEmail})...`);
+    createOrUpdateAdminAccount({
+      email: adminEmail,
+      password: adminPassword,
+      name: "Dr. K. S. Verma (Joint Secretary)",
+      role: "Chief Administrator · Directorate of Welfare",
+      avatar: "🏛️",
+    });
   }
 
   const appCount = db.prepare("SELECT count(*) as count FROM applications").get();

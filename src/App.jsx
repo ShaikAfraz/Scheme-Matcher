@@ -24,6 +24,9 @@ import JargonBusterModal from "./components/JargonBuster.jsx";
 import CscModeModal from "./components/CscModeModal.jsx";
 import Home from "./screens/Home.jsx";
 import Login from "./screens/Login.jsx";
+import UserDashboard from "./screens/UserDashboard.jsx";
+import AdminLogin from "./screens/AdminLogin.jsx";
+import AdminDashboard from "./screens/AdminDashboard.jsx";
 import ProfileForm from "./screens/ProfileForm.jsx";
 import Results from "./screens/Results.jsx";
 import Details from "./screens/Details.jsx";
@@ -167,9 +170,37 @@ export default function App() {
     // URL Hash multi-page routing synchronization
     const handleHash = () => {
       const hash = window.location.hash.replace(/^#\/?/, "");
-      if (!hash) return;
-      const [route, queryStr] = hash.split("?");
-      const validScreens = ["home", "login", "profile", "results", "details", "documents", "assistant", "tracker"];
+      let route = "home";
+      let queryStr = "";
+      if (hash) {
+        [route, queryStr] = hash.split("?");
+      } else if (typeof window !== "undefined" && window.location.pathname) {
+        const path = window.location.pathname.toLowerCase();
+        if (path.includes("/admin/login") || path.includes("/admin-login")) route = "admin-login";
+        else if (path.includes("/admin/dashboard") || path.includes("/admin-dashboard")) route = "admin-dashboard";
+        else if (path.includes("/dashboard")) route = "dashboard";
+        else if (path.includes("/register")) route = "register";
+        else if (path.includes("/login")) route = "login";
+      }
+
+      if (route === "admin/login") route = "admin-login";
+      if (route === "admin/dashboard") route = "admin-dashboard";
+
+      const validScreens = [
+        "home",
+        "login",
+        "register",
+        "dashboard",
+        "profile",
+        "results",
+        "details",
+        "documents",
+        "assistant",
+        "tracker",
+        "admin-login",
+        "admin-dashboard",
+      ];
+
       if (validScreens.includes(route)) {
         setScreen(route);
       }
@@ -181,9 +212,7 @@ export default function App() {
     };
 
     window.addEventListener("hashchange", handleHash);
-    if (window.location.hash) {
-      handleHash();
-    }
+    handleHash();
     return () => window.removeEventListener("hashchange", handleHash);
   }, []);
 
@@ -416,8 +445,8 @@ export default function App() {
     navigateTo("details", "slide-forward", id);
   };
 
-  // Handle citizen login / signup - Transfers user directly to the next page!
-  const handleUserLogin = (userData, redirectScreen = "results") => {
+  // Handle citizen or admin login / signup - Transfers user directly to their dashboard!
+  const handleUserLogin = (userData, redirectScreen = null) => {
     setCurrentUser(userData);
     setStoredActiveUser(userData);
 
@@ -448,10 +477,9 @@ export default function App() {
     });
     setTimeout(() => setWelcomeToast(null), 6000);
 
-    // Transfer the user to the next page!
-    if (redirectScreen) {
-      navigateTo(redirectScreen);
-    }
+    // Transfer the user to the appropriate dashboard!
+    const target = redirectScreen || (userData.systemRole === "admin" ? "admin-dashboard" : "dashboard");
+    navigateTo(target);
   };
 
   const handleUserLogout = () => {
@@ -462,12 +490,13 @@ export default function App() {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
+    const wasAdmin = currentUser?.systemRole === "admin";
     setCurrentUser(null);
     setStoredActiveUser(null);
     clearStoredAuth();
     setApplications([]);
     resetAll();
-    navigateTo("login", "slide-backward");
+    navigateTo(wasAdmin ? "admin-login" : "login", "slide-backward");
   };
 
 
@@ -509,7 +538,15 @@ export default function App() {
   const getBreadcrumbTitle = () => {
     switch (screen) {
       case "login":
-        return currentUser ? "Citizen Account Dashboard" : "Citizen Login & Registration";
+        return "Citizen Sign In";
+      case "register":
+        return "Citizen Registration & Profile Creation";
+      case "dashboard":
+        return "Citizen Account Dashboard";
+      case "admin-login":
+        return "Administrative Central Desk Login";
+      case "admin-dashboard":
+        return "Institutional Administrative Console";
       case "profile":
         return "Scheme Eligibility Questionnaire";
       case "results":
@@ -643,17 +680,19 @@ export default function App() {
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
-                  background: "#FFFFFF",
-                  border: `1px solid ${RULE}`,
+                  background: currentUser.systemRole === "admin" ? "#FEF3C7" : "#FFFFFF",
+                  border: `1px solid ${currentUser.systemRole === "admin" ? "#FCD34D" : RULE}`,
                   padding: "4px 10px 4px 6px",
                   borderRadius: 4,
                   boxShadow: "0 1px 2px rgba(22, 32, 50, 0.04)",
                 }}
               >
-                <span style={{ fontSize: 18 }}>{currentUser.avatar || "👤"}</span>
+                <span style={{ fontSize: 18 }}>
+                  {currentUser.systemRole === "admin" ? "🛡️" : currentUser.avatar || "👤"}
+                </span>
                 <button
                   type="button"
-                  onClick={() => navigateTo("login")}
+                  onClick={() => navigateTo(currentUser.systemRole === "admin" ? "admin-dashboard" : "dashboard")}
                   style={{
                     background: "none",
                     border: "none",
@@ -661,13 +700,13 @@ export default function App() {
                     cursor: "pointer",
                     textAlign: "left",
                   }}
-                  title="View Citizen Profile Details"
+                  title={currentUser.systemRole === "admin" ? "Open Administrator Console" : "Open Citizen Dashboard"}
                 >
-                  <div style={{ fontSize: 12, fontWeight: 600, color: INK }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: currentUser.systemRole === "admin" ? "#92400E" : INK }}>
                     {currentUser.name}
                   </div>
-                  <div style={{ fontSize: 10, color: SEAL, fontWeight: 500 }}>
-                    {currentUser.categoryBadge ? currentUser.categoryBadge.split("·")[0] : "Verified Citizen"}
+                  <div style={{ fontSize: 10, color: currentUser.systemRole === "admin" ? "#B45309" : SEAL, fontWeight: 600 }}>
+                    {currentUser.systemRole === "admin" ? "Admin Console ↗" : currentUser.categoryBadge ? currentUser.categoryBadge.split("·")[0] : "Verified Citizen"}
                   </div>
                 </button>
 
@@ -684,7 +723,7 @@ export default function App() {
                     display: "flex",
                     alignItems: "center",
                   }}
-                  title="Sign out of citizen account"
+                  title="Sign out of active account"
                 >
                   <LogOut size={13} />
                 </button>
@@ -764,11 +803,24 @@ export default function App() {
                 badge: documents.length > 0 ? documents.length : null,
               },
               { id: "assistant", label: "AI Scheme Sahayak", icon: MessageCircle },
-              {
-                id: "login",
-                label: currentUser ? "My Account" : "Citizen Account",
-                icon: KeyRound,
-              },
+              currentUser?.systemRole === "admin"
+                ? {
+                    id: "admin-dashboard",
+                    label: "Admin Console",
+                    icon: ShieldCheck,
+                    highlight: true,
+                  }
+                : currentUser
+                ? {
+                    id: "dashboard",
+                    label: "My Dashboard",
+                    icon: UserCheck,
+                  }
+                : {
+                    id: "login",
+                    label: "Citizen Login",
+                    icon: KeyRound,
+                  },
             ].map((tab) => {
               const isActive = screen === tab.id;
               const TabIcon = tab.icon;
@@ -1035,15 +1087,55 @@ export default function App() {
           >
             <div key={screen} className={transitionDir}>
               {screen === "login" && (
-              <Login
-                currentUser={currentUser}
-                onLogin={handleUserLogin}
-                onLogout={handleUserLogout}
-                setScreen={navigateTo}
-                onBack={goBack}
-                lang={lang}
-              />
-            )}
+                <Login
+                  currentUser={currentUser}
+                  onLogin={handleUserLogin}
+                  onLogout={handleUserLogout}
+                  setScreen={navigateTo}
+                  onBack={goBack}
+                  lang={lang}
+                  initialMode="signin"
+                />
+              )}
+
+              {screen === "register" && (
+                <Login
+                  currentUser={currentUser}
+                  onLogin={handleUserLogin}
+                  onLogout={handleUserLogout}
+                  setScreen={navigateTo}
+                  onBack={goBack}
+                  lang={lang}
+                  initialMode="signup"
+                />
+              )}
+
+              {screen === "dashboard" && (
+                <UserDashboard
+                  currentUser={currentUser}
+                  onLogout={handleUserLogout}
+                  setScreen={navigateTo}
+                  onOpenDetails={openDetails}
+                  lang={lang}
+                />
+              )}
+
+              {screen === "admin-login" && (
+                <AdminLogin
+                  currentUser={currentUser}
+                  onLogin={handleUserLogin}
+                  setScreen={navigateTo}
+                  onBack={goBack}
+                />
+              )}
+
+              {screen === "admin-dashboard" && (
+                <AdminDashboard
+                  currentUser={currentUser}
+                  onLogout={handleUserLogout}
+                  setScreen={navigateTo}
+                />
+              )}
 
             {screen === "profile" && (
               <ProfileForm
@@ -1245,6 +1337,22 @@ export default function App() {
                   ● SQLite DB ({dbStatus.counts?.users || 0} Citizens, {dbStatus.counts?.schemes || SCHEMES.length} Schemes, {dbStatus.counts?.applications || 0} Applications)
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => navigateTo("admin-login")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#FDE68A",
+                  cursor: "pointer",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  padding: 0,
+                }}
+              >
+                Administrative Portal ↗
+              </button>
+              <span>•</span>
               <span>Terms of Use</span>
               <span>•</span>
               <span>Statutory Advisory</span>

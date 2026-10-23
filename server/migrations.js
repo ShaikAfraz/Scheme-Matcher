@@ -205,5 +205,29 @@ export function runMigrations(db) {
     console.log("[Migration] Migration 4 applied successfully.");
   }
 
+  // -------------------------------------------------------------
+  // MIGRATION 5: Password Reset Tokens table
+  // -------------------------------------------------------------
+  if (!applied.has(5)) {
+    console.log("[Migration] Applying Migration 5: Password Reset Tokens table...");
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_reset_tokens_token ON password_reset_tokens(token);
+      CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
+    `);
+
+    db.prepare("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (5, 'password_reset_tokens')").run();
+    console.log("[Migration] Migration 5 applied successfully.");
+  }
+
   console.log("[Migration] Database schema migrations are up to date.");
 }

@@ -32,6 +32,17 @@ import {
   recordAuditLog,
   getAuditLogs,
   getSystemStats,
+  createPasswordResetToken,
+  resetPasswordWithToken,
+  createOrUpdateAdminAccount,
+  formatSchemeRow,
+  getAdminSchemes,
+  adminCreateScheme,
+  adminUpdateScheme,
+  adminDeleteScheme,
+  getAdminDocumentsQueue,
+  adminReviewDocument,
+  getAdminOverviewStats,
 } from "./db.js";
 import { sanitizeString, validateEmailOrMobile } from "./security.js";
 import "./seed.js";
@@ -80,7 +91,7 @@ function sendJson(res, statusCode, data, req = null) {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
   });
   res.end(JSON.stringify(data));
@@ -134,7 +145,7 @@ export function createDatabaseApiMiddleware() {
       res.writeHead(200, {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
       });
       res.end();
@@ -249,6 +260,98 @@ export function createDatabaseApiMiddleware() {
           token: session.token,
           user,
         }, req);
+      }
+
+      // Dedicated Institutional Administrator Login Endpoint
+      if (pathname === "/api/auth/admin/login" && req.method === "POST") {
+        const data = await parseJsonBody(req);
+        const identifier = sanitizeString(data.identifier || data.email);
+        const password = String(data.password || "");
+
+        if (!identifier || !password) {
+          return sendJson(res, 400, { success: false, error: "Administrative email/identifier and password are required." }, req);
+        }
+
+        const user = authenticateUser(identifier, password);
+        if (!user) {
+          return sendJson(res, 401, { success: false, error: "Invalid administrative credentials." }, req);
+        }
+
+        // Strict server-side verification: user MUST be an admin
+        if (user.systemRole !== "admin") {
+          recordAuditLog({
+            userId: user.id,
+            action: "ADMIN_LOGIN_DENIED",
+            resourceType: "user",
+            resourceId: user.id,
+            details: { reason: "Non-admin account attempted admin login" },
+          });
+          return sendJson(res, 403, {
+            success: false,
+            error: "Access denied: Account is not an authorized administrator. Please sign in through the Citizen Portal.",
+          }, req);
+        }
+
+        recordAuditLog({
+          userId: user.id,
+          action: "ADMIN_LOGIN_SUCCESS",
+          resourceType: "user",
+          resourceId: user.id,
+          details: { email: user.email },
+        });
+
+        const session = createSession(user.id);
+        return sendJson(res, 200, {
+          success: true,
+          message: "Administrative authentication successful.",
+          token: session.token,
+          user,
+        }, req);
+      }
+
+      // Password Recovery: Request Reset Token
+      if (pathname === "/api/auth/forgot-password" && req.method === "POST") {
+        const data = await parseJsonBody(req);
+        const identifier = sanitizeString(data.identifier || data.email || data.mobile);
+
+        if (!identifier) {
+          return sendJson(res, 400, { success: false, error: "Email or mobile number is required to request a password reset." }, req);
+        }
+
+        const resetResult = createPasswordResetToken(identifier);
+        if (!resetResult) {
+          return sendJson(res, 404, { success: false, error: "No citizen or administrator account found with this identifier." }, req);
+        }
+
+        return sendJson(res, 200, {
+          success: true,
+          message: "Password reset token generated successfully. In production, this is dispatched via SMS/email OTP.",
+          resetToken: resetResult.token,
+          email: resetResult.email,
+          expiresAt: resetResult.expiresAt,
+        }, req);
+      }
+
+      // Password Recovery: Submit New Password
+      if (pathname === "/api/auth/reset-password" && req.method === "POST") {
+        const data = await parseJsonBody(req);
+        const token = sanitizeString(data.token);
+        const newPassword = String(data.newPassword || data.password || "");
+
+        if (!token || !newPassword) {
+          return sendJson(res, 400, { success: false, error: "Reset token and new password are required." }, req);
+        }
+
+        if (newPassword.length < 4) {
+          return sendJson(res, 400, { success: false, error: "New password must be at least 4 characters long." }, req);
+        }
+
+        const resetStatus = resetPasswordWithToken(token, newPassword);
+        if (!resetStatus.success) {
+          return sendJson(res, 400, resetStatus, req);
+        }
+
+        return sendJson(res, 200, resetStatus, req);
       }
 
       if (pathname === "/api/auth/logout" && req.method === "POST") {
@@ -419,8 +522,8 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 401, { success: false, error: "Authentication required to upload documents." }, req);
         }
         const docData = await parseJsonBody(req);
-        saveDocument(docData, authUser.id);
-        return sendJson(res, 201, { success: true, message: "Document record saved." }, req);
+        const savedDoc = saveDocument(docData, authUser.id);
+        return sendJson(res, 201, { success: true, message: "Document record saved.", document: savedDoc }, req);
       }
 
       // ---------------------------------------------------------
@@ -532,6 +635,170 @@ export function createDatabaseApiMiddleware() {
         const action = url.searchParams.get("action");
         const logs = getAuditLogs({ role: authUser.systemRole, limit, action });
         return sendJson(res, 200, { success: true, count: logs.length, logs }, req);
+      }
+
+      // ---------------------------------------------------------
+      // ADMIN PROTECTED MANAGEMENT ENDPOINTS
+      // ---------------------------------------------------------
+      // 1. Admin System & Welfare Overview Analytics
+      if (pathname === "/api/admin/stats" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const stats = getAdminOverviewStats();
+        return sendJson(res, 200, { success: true, stats }, req);
+      }
+
+      // 2. Admin Schemes List with Filtering & Metadata
+      if (pathname === "/api/admin/schemes" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const search = url.searchParams.get("search") || "";
+        const level = url.searchParams.get("level") || "all";
+        const status = url.searchParams.get("status") || "all";
+        const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+        const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+
+        const result = getAdminSchemes({ search, level, verificationStatus: status, limit, offset });
+        return sendJson(res, 200, { success: true, total: result.total, schemes: result.schemes }, req);
+      }
+
+      // 3. Admin Scheme Creation
+      if (pathname === "/api/admin/schemes" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const data = await parseJsonBody(req);
+        if (!data.name || data.name.trim().length < 5) {
+          return sendJson(res, 400, { success: false, error: "Scheme name must be at least 5 characters long." }, req);
+        }
+        const created = adminCreateScheme(data, authUser.id);
+        return sendJson(res, 201, { success: true, message: "Scheme record created successfully.", scheme: created }, req);
+      }
+
+      // 4. Admin Scheme Verification Status Update
+      if (pathname.startsWith("/api/admin/schemes/") && pathname.endsWith("/verify") && req.method === "PATCH") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const schemeId = pathname.replace("/api/admin/schemes/", "").replace("/verify", "");
+        const data = await parseJsonBody(req);
+        let verificationStatus = data.verificationStatus || data.verification_status;
+        if (!verificationStatus && typeof data.isVerified === "boolean") {
+          verificationStatus = data.isVerified ? "verified" : "unverified";
+        }
+        if (!verificationStatus) verificationStatus = "verified";
+
+        const updated = adminUpdateScheme(
+          schemeId,
+          {
+            verificationStatus,
+            lastVerifiedDate: data.lastVerifiedDate || new Date().toISOString().split("T")[0],
+          },
+          authUser.id
+        );
+        if (!updated) {
+          return sendJson(res, 404, { success: false, error: "Scheme not found." }, req);
+        }
+        return sendJson(res, 200, { success: true, message: "Scheme verification updated.", scheme: updated }, req);
+      }
+
+      // 5. Admin Scheme Update & Delete
+      if (pathname.startsWith("/api/admin/schemes/") && !pathname.endsWith("/verify")) {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const schemeId = pathname.replace("/api/admin/schemes/", "");
+
+        if (req.method === "PUT") {
+          const data = await parseJsonBody(req);
+          const updated = adminUpdateScheme(schemeId, data, authUser.id);
+          if (!updated) {
+            return sendJson(res, 404, { success: false, error: "Scheme not found." }, req);
+          }
+          return sendJson(res, 200, { success: true, message: "Scheme record updated.", scheme: updated }, req);
+        }
+
+        if (req.method === "DELETE") {
+          const ok = adminDeleteScheme(schemeId, authUser.id);
+          if (!ok) {
+            return sendJson(res, 404, { success: false, error: "Scheme not found or could not be deleted." }, req);
+          }
+          return sendJson(res, 200, { success: true, message: "Scheme deleted successfully." }, req);
+        }
+      }
+
+      // 6. Admin Document Verification Desk Queue
+      if (pathname === "/api/admin/documents" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const status = url.searchParams.get("status") || "all";
+        const limit = Math.min(Number(url.searchParams.get("limit") || 100), 200);
+        const docs = getAdminDocumentsQueue({ status, limit });
+        return sendJson(res, 200, { success: true, count: docs.length, documents: docs }, req);
+      }
+
+      // 7. Admin Document Review Decision
+      if (pathname.startsWith("/api/admin/documents/") && pathname.endsWith("/review") && req.method === "PATCH") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const docId = pathname.replace("/api/admin/documents/", "").replace("/review", "");
+        const data = await parseJsonBody(req);
+        const verificationStatus = data.verificationStatus || data.verification_status || (data.status ? data.status.toLowerCase() : "verified");
+        const ok = adminReviewDocument(docId, {
+          verificationStatus,
+          verificationNotes: data.verificationNotes || data.notes || data.remark || "",
+          reviewerAdminId: authUser.id,
+        });
+        if (!ok) {
+          return sendJson(res, 404, { success: false, error: "Document not found or could not be updated." }, req);
+        }
+        const updatedDoc = db.prepare("SELECT * FROM documents WHERE id = ?").get(docId);
+        return sendJson(res, 200, { success: true, message: "Document verification status updated successfully.", document: updatedDoc }, req);
+      }
+
+      // 8. Admin Citizen Registry List
+      if (pathname === "/api/admin/users" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const users = getAllUsers(true);
+        return sendJson(res, 200, { success: true, count: users.length, users }, req);
       }
 
       // ---------------------------------------------------------
