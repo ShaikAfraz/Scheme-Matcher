@@ -31,6 +31,7 @@ import Documents from "./screens/Documents.jsx";
 import Assistant from "./screens/Assistant.jsx";
 import ApplicationTracker from "./screens/ApplicationTracker.jsx";
 import { matchSchemes } from "./engine/matcher.js";
+import { SCHEMES } from "./data/schemes.js";
 import {
   getStoredActiveUser,
   setStoredActiveUser,
@@ -634,7 +635,7 @@ export default function App() {
                   background: dbStatus?.status === "connected" ? "#16A34A" : "#D97706",
                 }}
               />
-              <span>{dbStatus?.status === "connected" ? `SQLite Active · ${dbStatus?.counts?.schemes || 19} Schemes Codified` : "Local Database Active"}</span>
+              <span>{dbStatus?.status === "connected" ? `SQLite Active · ${dbStatus?.counts?.schemes || SCHEMES.length} Schemes Codified` : "Local Database Active"}</span>
             </div>
             {currentUser ? (
               <div
@@ -1241,7 +1242,7 @@ export default function App() {
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
               {dbStatus?.status === "connected" && (
                 <span style={{ color: "#34D399", fontWeight: 600 }}>
-                  ● SQLite DB ({dbStatus.counts?.users || 0} Citizens, {dbStatus.counts?.schemes || 19} Schemes, {dbStatus.counts?.applications || 0} Applications)
+                  ● SQLite DB ({dbStatus.counts?.users || 0} Citizens, {dbStatus.counts?.schemes || SCHEMES.length} Schemes, {dbStatus.counts?.applications || 0} Applications)
                 </span>
               )}
               <span>Terms of Use</span>

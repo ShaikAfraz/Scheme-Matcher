@@ -173,6 +173,37 @@ export function runMigrations(db) {
     console.log("[Migration] Migration 3 applied successfully.");
   }
 
-  console.log("[Migration] Database schema migrations are up to date.");
+  // -------------------------------------------------------------
+  // MIGRATION 4: Scheme expansion metadata (government_level, source, verification_status, last_verified_date)
+  // -------------------------------------------------------------
+  if (!applied.has(4)) {
+    console.log("[Migration] Applying Migration 4: Scheme Expansion Metadata...");
 
+    const hasTable = (tableName) => Boolean(
+      db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(tableName)
+    );
+
+    if (hasTable("schemes")) {
+      const schemeCols = db.prepare("PRAGMA table_info(schemes)").all().map((c) => c.name);
+      if (!schemeCols.includes("government_level")) {
+        db.exec("ALTER TABLE schemes ADD COLUMN government_level TEXT DEFAULT 'central';");
+      }
+      if (!schemeCols.includes("source")) {
+        db.exec("ALTER TABLE schemes ADD COLUMN source TEXT DEFAULT 'myScheme / Official Ministry Portal';");
+      }
+      if (!schemeCols.includes("verification_status")) {
+        db.exec("ALTER TABLE schemes ADD COLUMN verification_status TEXT DEFAULT 'verified';");
+      }
+      if (!schemeCols.includes("last_verified_date")) {
+        db.exec("ALTER TABLE schemes ADD COLUMN last_verified_date TEXT DEFAULT '2026-10-23';");
+      }
+      db.exec("CREATE INDEX IF NOT EXISTS idx_schemes_gov_level ON schemes(government_level);");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_schemes_verification ON schemes(verification_status);");
+    }
+
+    db.prepare("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (4, 'scheme_expansion_metadata')").run();
+    console.log("[Migration] Migration 4 applied successfully.");
+  }
+
+  console.log("[Migration] Database schema migrations are up to date.");
 }

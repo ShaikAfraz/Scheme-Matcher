@@ -130,8 +130,8 @@ export default function Home({ setScreen, onOpenCsc, lang = "en", dbStatus = nul
             >
               Government welfare and subsidized loan programs shouldn't require
               intermediaries or bureaucratic deciphering. Scheme Matcher evaluates
-              your age, trade, social category, and income against {dbStatus?.counts?.schemes || 19} codified central
-              welfare programs — with 100% deterministic transparency.
+              your age, trade, social category, and income against {dbStatus?.counts?.schemes || SCHEMES.length} verified
+              Central, State, and Scholarship programs — with 100% deterministic transparency.
             </p>
 
             {/* Primary CTA & Secondary Links */}
@@ -197,7 +197,7 @@ export default function Home({ setScreen, onOpenCsc, lang = "en", dbStatus = nul
                   e.currentTarget.style.backgroundColor = "transparent";
                 }}
               >
-                <span>Explore All {dbStatus?.counts?.schemes || 19} Schemes</span>
+                <span>Explore All {dbStatus?.counts?.schemes || SCHEMES.length} Schemes</span>
                 <ArrowRight size={14} color={SEAL} />
               </button>
             </div>
@@ -421,7 +421,7 @@ export default function Home({ setScreen, onOpenCsc, lang = "en", dbStatus = nul
           >
             {[
               {
-                stat: String(dbStatus?.counts?.schemes || 19),
+                stat: String(dbStatus?.counts?.schemes || SCHEMES.length),
                 label: "Codified Schemes",
                 desc: dbStatus?.counts?.users
                   ? `${dbStatus.counts.users} citizen profiles registered with live database persistence.`

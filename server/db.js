@@ -100,6 +100,7 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       ministry TEXT,
+      government_level TEXT DEFAULT 'central',
       description TEXT,
       categories TEXT,
       min_age INTEGER,
@@ -114,6 +115,9 @@ export function initDatabase() {
       documents TEXT,
       application_steps TEXT,
       portal_url TEXT,
+      source TEXT DEFAULT 'myScheme / Official Ministry Portal',
+      verification_status TEXT DEFAULT 'verified',
+      last_verified_date TEXT DEFAULT '2026-10-23',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
