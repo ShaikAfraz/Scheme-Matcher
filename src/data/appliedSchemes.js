@@ -1,3 +1,5 @@
+import { getStoredAuthToken } from "./demoProfiles.js";
+
 /**
  * APPLIED SCHEMES & TRACKING DATA
  * Tracks government scheme applications across the 5 standardized stages of approval.
@@ -348,9 +350,9 @@ export async function lookupApplicationPublicly(query) {
   if (!query || !query.trim()) return null;
   const cleanQ = query.trim().toUpperCase().replace(/\s+/g, "");
 
-  // 1. Check live SQLite database
+  // 1. Check live SQLite database public tracking endpoint
   try {
-    const res = await fetch(`/api/applications?q=${encodeURIComponent(query.trim())}`);
+    const res = await fetch(`/api/applications/track?q=${encodeURIComponent(query.trim())}`);
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.application) {
@@ -423,7 +425,15 @@ export async function deleteApplication(appId, userId) {
     all = all.filter((a) => !(a.id === appId && (!userId || a.userId === userId)));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
     try {
-      await fetch(`/api/applications?id=${encodeURIComponent(appId)}`, { method: "DELETE" });
+      const token = getStoredAuthToken();
+      const headers = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      await fetch(`/api/applications?id=${encodeURIComponent(appId)}`, {
+        method: "DELETE",
+        headers,
+      });
     } catch (e) {}
     return true;
   } catch (e) {
@@ -433,15 +443,21 @@ export async function deleteApplication(appId, userId) {
 
 export async function syncAppToDatabase(app) {
   try {
+    const token = getStoredAuthToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
     await fetch("/api/applications", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(app),
     });
   } catch (e) {
     console.warn("[Database Sync] Running in offline / local mode:", e.message);
   }
 }
+
 
 export function saveApplication(newApp) {
   try {

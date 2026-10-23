@@ -30,7 +30,13 @@ import Documents from "./screens/Documents.jsx";
 import Assistant from "./screens/Assistant.jsx";
 import ApplicationTracker from "./screens/ApplicationTracker.jsx";
 import { matchSchemes } from "./engine/matcher.js";
-import { getStoredActiveUser, setStoredActiveUser } from "./data/demoProfiles.js";
+import {
+  getStoredActiveUser,
+  setStoredActiveUser,
+  getStoredAuthToken,
+  setStoredAuthToken,
+  clearStoredAuth,
+} from "./data/demoProfiles.js";
 import { getStoredApplications } from "./data/appliedSchemes.js";
 import { INK, PAPER, CARD, SEAL, OK, RULE, serif, sans } from "./theme/tokens.js";
 import { TRANSLATIONS } from "./theme/i18n.js";
@@ -85,6 +91,31 @@ export default function App() {
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
+  // Validate session token with backend on initial load
+  useEffect(() => {
+    const token = getStoredAuthToken();
+    if (token) {
+      fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.user) {
+            setCurrentUser(data.user);
+            setStoredActiveUser(data.user);
+            if (data.user.profileData) {
+              setProfile(data.user.profileData);
+            }
+          } else {
+            // Invalid or expired session
+            clearStoredAuth();
+            setCurrentUser(null);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
   // On mount, synchronize with active user data & browser URL hash
   useEffect(() => {
     if (currentUser && currentUser.profileData && currentUser.profileData.age) {
@@ -122,11 +153,17 @@ export default function App() {
 
   // Sync applications and check live SQLite database connection status
   useEffect(() => {
+    const token = getStoredAuthToken();
     if (currentUser && currentUser.id) {
       const localApps = getStoredApplications(currentUser.id);
       setApplications(localApps);
 
-      fetch(`/api/applications?userId=${encodeURIComponent(currentUser.id)}`)
+      const headers = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      fetch(`/api/applications?userId=${encodeURIComponent(currentUser.id)}`, { headers })
         .then((r) => r.json())
         .then((data) => {
           if (data.success && Array.isArray(data.applications)) {
@@ -143,6 +180,7 @@ export default function App() {
       .then((data) => setDbStatus(data))
       .catch(() => setDbStatus({ status: "local", engine: "Client Storage (Offline)" }));
   }, [currentUser, screen]);
+
 
   // Fallback schemes if user visits Results tab directly
   const displayMatches = useMemo(() => {
@@ -268,12 +306,21 @@ export default function App() {
   };
 
   const handleUserLogout = () => {
+    const token = getStoredAuthToken();
+    if (token) {
+      fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
     setCurrentUser(null);
     setStoredActiveUser(null);
+    clearStoredAuth();
     setApplications([]);
     resetAll();
     navigateTo("login", "slide-backward");
   };
+
 
   const selectedMatch = useMemo(() => {
     const pool = matches || displayMatches;

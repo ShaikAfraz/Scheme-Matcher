@@ -18,7 +18,7 @@ import {
   Info,
   ChevronLeft,
 } from "lucide-react";
-import { DEMO_PROFILES, getCustomUsers, saveCustomUser } from "../data/demoProfiles.js";
+import { DEMO_PROFILES, getCustomUsers, saveCustomUser, setStoredAuthToken } from "../data/demoProfiles.js";
 import { INK, PAPER, CARD, SEAL, OK, VERIFY, NO, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
 import { TRANSLATIONS } from "../theme/i18n.js";
 
@@ -81,7 +81,26 @@ export default function Login({
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
   // Handle demo profile instant 1-click login
-  const handleSelectDemo = (demo) => {
+  const handleSelectDemo = async (demo) => {
+    let serverUser = null;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: demo.email,
+          password: "demo123",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.token) {
+        setStoredAuthToken(data.token);
+        serverUser = data.user;
+      }
+    } catch (err) {
+      console.warn("Backend auth offline, using local session:", err.message);
+    }
+
     const demoData = {
       id: demo.id,
       name: demo.name,
@@ -92,6 +111,7 @@ export default function Login({
       categoryBadge: demo.categoryBadge,
       badgeColor: demo.badgeColor,
       isDemo: true,
+      systemRole: serverUser?.systemRole || "citizen",
       profileData: demo.profileData,
       documents: demo.documents,
       targetSchemes: demo.targetSchemes,
@@ -106,45 +126,93 @@ export default function Login({
   };
 
   // Handle standard credential sign in
-  const handleSignIn = (e) => {
+  const handleSignIn = async (e) => {
     e.preventDefault();
     setLoginError("");
 
     const emailTrim = loginEmail.trim().toLowerCase();
     const passTrim = loginPassword.trim();
 
-    // 1. Check against demo profiles
-    const matchedDemo = DEMO_PROFILES.find(
-      (d) => d.email.toLowerCase() === emailTrim || d.mobile.replace(/\s+/g, "") === emailTrim.replace(/\s+/g, "")
-    );
-
-    if (matchedDemo && (passTrim === "demo123" || passTrim === matchedDemo.password)) {
-      handleSelectDemo(matchedDemo);
+    if (!emailTrim || !passTrim) {
+      setLoginError("Please enter both email/mobile and password.");
       return;
     }
 
-    // 2. Check against custom users in localStorage
-    const customUsers = getCustomUsers();
-    const matchedCustom = customUsers.find(
-      (u) => u.email.toLowerCase() === emailTrim || u.mobile === emailTrim
-    );
+    // 1. Attempt server-side authentication
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: emailTrim,
+          password: passTrim,
+        }),
+      });
+      const data = await res.json();
 
-    if (matchedCustom && matchedCustom.password === passTrim) {
-      onLogin(matchedCustom, "results");
-      setAuthSuccessMsg(`Welcome back, ${matchedCustom.name}! Transferring to your schemes...`);
-      if (setScreen) {
-        setTimeout(() => {
-          setScreen("results");
-        }, 350);
+      if (res.ok && data.success && data.user) {
+        if (data.token) {
+          setStoredAuthToken(data.token);
+        }
+
+        const matchedDemo = DEMO_PROFILES.find(
+          (d) => d.email.toLowerCase() === emailTrim || d.mobile.replace(/\s+/g, "") === emailTrim.replace(/\s+/g, "")
+        );
+
+        const authenticatedUser = {
+          ...data.user,
+          avatar: data.user.avatar || (matchedDemo ? matchedDemo.avatar : "👤"),
+          categoryBadge: data.user.categoryBadge || (matchedDemo ? matchedDemo.categoryBadge : undefined),
+          badgeColor: data.user.badgeColor || (matchedDemo ? matchedDemo.badgeColor : undefined),
+          documents: data.user.documents?.length ? data.user.documents : (matchedDemo ? matchedDemo.documents : []),
+          targetSchemes: data.user.targetSchemes?.length ? data.user.targetSchemes : (matchedDemo ? matchedDemo.targetSchemes : ["PMEGP", "MUDRA"]),
+        };
+
+        onLogin(authenticatedUser, "results");
+        setAuthSuccessMsg(`Welcome back, ${authenticatedUser.name}! Transferring to your schemes...`);
+        if (setScreen) {
+          setTimeout(() => {
+            setScreen("results");
+          }, 350);
+        }
+        return;
+      } else {
+        setLoginError(data.error || "Invalid email/mobile or password.");
+        return;
       }
-      return;
-    }
+    } catch (netErr) {
+      // 2. Offline fallback to local demo and custom user store
+      const matchedDemo = DEMO_PROFILES.find(
+        (d) => d.email.toLowerCase() === emailTrim || d.mobile.replace(/\s+/g, "") === emailTrim.replace(/\s+/g, "")
+      );
 
-    setLoginError("Invalid email/mobile or password. For demo accounts, use password 'demo123' or 1-click login below.");
+      if (matchedDemo && (passTrim === "demo123" || passTrim === matchedDemo.password)) {
+        handleSelectDemo(matchedDemo);
+        return;
+      }
+
+      const customUsers = getCustomUsers();
+      const matchedCustom = customUsers.find(
+        (u) => u.email.toLowerCase() === emailTrim || u.mobile === emailTrim
+      );
+
+      if (matchedCustom && matchedCustom.password === passTrim) {
+        onLogin(matchedCustom, "results");
+        setAuthSuccessMsg(`Welcome back, ${matchedCustom.name}! Transferring to your schemes...`);
+        if (setScreen) {
+          setTimeout(() => {
+            setScreen("results");
+          }, 350);
+        }
+        return;
+      }
+
+      setLoginError("Invalid email/mobile or password. For demo accounts, use password 'demo123' or 1-click login below.");
+    }
   };
 
   // Handle custom citizen signup - Transfers user directly to the next page!
-  const handleSignUp = (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault();
     setLoginError("");
 
@@ -161,17 +229,15 @@ export default function Login({
       return;
     }
 
-    const newUser = {
-      id: `usr_${Date.now()}`,
+    const payload = {
       name: signUpForm.name.trim(),
-      avatar: signUpForm.gender === "Female" ? "👩🏽" : "👨🏽",
-      role: `${signUpForm.category} Entrepreneur · ${signUpForm.businessType}`,
       email: signUpForm.email.trim() || `${signUpForm.mobile.trim()}@citizen.in`,
       mobile: signUpForm.mobile.trim(),
       password: signUpForm.password.trim(),
-      categoryBadge: `${signUpForm.category} Community · ${signUpForm.state}`,
-      badgeColor: SEAL,
-      isDemo: false,
+      gender: signUpForm.gender,
+      state: signUpForm.state,
+      category: signUpForm.category,
+      businessType: signUpForm.businessType,
       profileData: {
         age: Number(signUpForm.age) || 28,
         gender: signUpForm.gender,
@@ -187,31 +253,90 @@ export default function Login({
         isTransgender: signUpForm.isTransgender,
         isDnt: signUpForm.isDnt,
       },
-      documents: [
-        {
-          id: `doc_reg_aadhaar_${Date.now()}`,
-          name: "Aadhaar_Self_Declaration.pdf",
-          size: "650 KB",
-          type: "Aadhaar Card (Identity & Age Proof)",
-          typeId: "aadhaar",
-          uploadedAt: "Just now",
-          status: "Verified",
-        },
-      ],
-      targetSchemes: ["PMEGP", "MUDRA", "State Subsidy"],
     };
 
-    saveCustomUser(newUser);
-    onLogin(newUser, "results");
-    setAuthSuccessMsg(`Registration successful! Welcome, ${newUser.name}. Transferring to your matched government schemes...`);
-    
-    // Automatically transfer citizen to next page
-    if (setScreen) {
-      setTimeout(() => {
-        setScreen("results");
-      }, 400);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success && data.user) {
+        if (data.token) {
+          setStoredAuthToken(data.token);
+        }
+
+        const newUser = {
+          ...data.user,
+          documents: [
+            {
+              id: `doc_reg_aadhaar_${Date.now()}`,
+              name: "Aadhaar_Self_Declaration.pdf",
+              size: "650 KB",
+              type: "Aadhaar Card (Identity & Age Proof)",
+              typeId: "aadhaar",
+              uploadedAt: "Just now",
+              status: "Verified",
+            },
+          ],
+          targetSchemes: ["PMEGP", "MUDRA", "State Subsidy"],
+        };
+
+        saveCustomUser(newUser);
+        onLogin(newUser, "results");
+        setAuthSuccessMsg(`Registration successful! Welcome, ${newUser.name}. Transferring to your matched government schemes...`);
+
+        if (setScreen) {
+          setTimeout(() => {
+            setScreen("results");
+          }, 400);
+        }
+        return;
+      } else {
+        setLoginError(data.error || "Registration failed. Please check your inputs.");
+        return;
+      }
+    } catch (netErr) {
+      // Offline fallback
+      const newUser = {
+        id: `usr_${Date.now()}`,
+        name: signUpForm.name.trim(),
+        avatar: signUpForm.gender === "Female" ? "👩🏽" : "👨🏽",
+        role: `${signUpForm.category} Entrepreneur · ${signUpForm.businessType}`,
+        email: signUpForm.email.trim() || `${signUpForm.mobile.trim()}@citizen.in`,
+        mobile: signUpForm.mobile.trim(),
+        categoryBadge: `${signUpForm.category} Community · ${signUpForm.state}`,
+        badgeColor: SEAL,
+        isDemo: false,
+        profileData: payload.profileData,
+        documents: [
+          {
+            id: `doc_reg_aadhaar_${Date.now()}`,
+            name: "Aadhaar_Self_Declaration.pdf",
+            size: "650 KB",
+            type: "Aadhaar Card (Identity & Age Proof)",
+            typeId: "aadhaar",
+            uploadedAt: "Just now",
+            status: "Verified",
+          },
+        ],
+        targetSchemes: ["PMEGP", "MUDRA", "State Subsidy"],
+      };
+
+      saveCustomUser(newUser);
+      onLogin(newUser, "results");
+      setAuthSuccessMsg(`Registration saved! Welcome, ${newUser.name}. Transferring...`);
+
+      if (setScreen) {
+        setTimeout(() => {
+          setScreen("results");
+        }, 400);
+      }
     }
   };
+
 
   return (
     <div style={{ maxWidth: 920, margin: "0 auto" }}>

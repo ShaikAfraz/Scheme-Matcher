@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Key, Bot, User, AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Send, Sparkles, Bot, User, AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
 import VoiceReader from "../components/VoiceReader.jsx";
 import { INK, PAPER, SEAL, OK, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
-
-const DEFAULT_API_KEY = "";
 
 const QUICK_PROMPTS = [
   "Which scheme is best suited for me?",
@@ -17,19 +15,11 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: "Namaste! I am your AI Scheme Assistant, powered by Google Gemini and grounded in your profile and pre-computed matching results. Ask me anything about eligibility, required certificates, subsidies, or step-by-step application guidance.",
+      text: "Namaste! I am your AI Scheme Assistant, grounded in your demographic profile and pre-computed matching results. Ask me anything about eligibility criteria, required certificates, subsidies, or step-by-step application guidance.",
     },
   ]);
   const [input, setInput] = useState(initialQuery || "");
   const [loading, setLoading] = useState(false);
-  const [apiKey, setApiKey] = useState(() => {
-    return (
-      import.meta.env?.VITE_GEMINI_API_KEY ||
-      localStorage.getItem("GEMINI_API_KEY") ||
-      DEFAULT_API_KEY
-    );
-  });
-  const [showKeyDialog, setShowKeyDialog] = useState(false);
 
   const scrollRef = useRef(null);
 
@@ -46,24 +36,21 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
     }
   }, [initialQuery]);
 
-  const saveApiKey = (key) => {
-    const trimmed = key.trim();
-    setApiKey(trimmed || DEFAULT_API_KEY);
-    localStorage.setItem("GEMINI_API_KEY", trimmed || DEFAULT_API_KEY);
-    setShowKeyDialog(false);
-  };
-
   /**
-   * Deterministic grounded response fallback
+   * Client-side deterministic grounded response fallback
    */
   const generateOfflineGroundedResponse = (query) => {
     const q = query.toLowerCase();
     const top = matches[0];
     const second = matches[1];
 
+    if (!top) {
+      return "Please complete your entrepreneur profile to receive tailored guidance on government schemes.";
+    }
+
     if (q.includes("best") || q.includes("which scheme") || q.includes("recommend")) {
       return (
-        `Based on your profile (${profile.age}yo, ${profile.category} category, ${profile.gender}, ${profile.businessType}), ` +
+        `Based on your profile (${profile.age || 28}yo, ${profile.category || "General"} category, ${profile.gender || "Citizen"}, ${profile.businessType || "Manufacturing"}), ` +
         `your top match is **${top.scheme.name}** with a **${top.score}% suitability match**.\n\n` +
         `**Key Reasons:**\n` +
         top.reasons.green.map((r) => `• ${r}`).join("\n") +
@@ -110,8 +97,8 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
       `Regarding your question: "${query}"\n\n` +
       `Your profile matches **${matches.length} government schemes**, led by **${top.scheme.name}** (${top.score}% match).\n\n` +
       `**Profile Highlights:**\n` +
-      `• Category: ${profile.category} (${profile.gender})\n` +
-      `• Need: ₹${Number(profile.financialRequirement).toLocaleString("en-IN")} (${profile.businessType}, ${profile.businessStatus})\n` +
+      `• Category: ${profile.category || "General"} (${profile.gender || "Citizen"})\n` +
+      `• Need: ₹${Number(profile.financialRequirement || 150000).toLocaleString("en-IN")} (${profile.businessType || "Manufacturing"}, ${profile.businessStatus || "new"})\n` +
       `• Implementing Authority: ${top.scheme.ministry}\n` +
       `• Portal: ${top.scheme.portalUrl || top.scheme.source}\n\n` +
       `Ask me for specific document checklists, bank interest rates, or eligibility comparisons!`
@@ -126,102 +113,34 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
     setMessages((m) => [...m, { role: "user", text: question }]);
     setLoading(true);
 
-    const context = matches.slice(0, 5).map(({ scheme, score, reasons }) => ({
-      name: scheme.name,
-      ministry: scheme.ministry,
-      match_score: score,
-      why_match: reasons.green,
-      gaps: [...reasons.red, ...reasons.yellow],
-      benefits: scheme.benefits,
-      documents: scheme.documents,
-      portal: scheme.portalUrl || scheme.source,
-    }));
-
-    const langInstruction =
-      lang === "hi"
-        ? "5. Please answer primarily in clear, respectful, easy-to-understand Hindi (हिन्दी) so the marginalized entrepreneur can understand without difficulty.\n"
-        : lang === "ta"
-        ? "5. Please answer in Tamil (தமிழ்) if possible or simple bilingual format.\n"
-        : lang === "te"
-        ? "5. Please answer in Telugu (తెలుగు) if possible or simple bilingual format.\n"
-        : lang === "kn"
-        ? "5. Please answer in Kannada (ಕನ್ನಡ) if possible or simple bilingual format.\n"
-        : "5. Speak in simple Indian English, explaining any bureaucratic abbreviations.\n";
-
-    const systemPrompt =
-      "You are the official AI Assistant for the 'AI-Driven Scheme Matching Platform for Marginalized Entrepreneurs' (SIH26092, Ministry of Social Justice & Empowerment).\n" +
-      "You must ONLY explain, summarise and answer questions grounded strictly in the pre-computed matches and user profile provided below.\n" +
-      "CRITICAL RULES:\n" +
-      "1. You DO NOT invent or calculate new eligibility or scores — you explain the pre-computed deterministic results.\n" +
-      "2. You NEVER claim guaranteed approval or sanction from any government body.\n" +
-      "3. Speak in empathetic, clear, plain language, avoiding bureaucratic jargon.\n" +
-      "4. If a document or verification is required, emphasize it clearly.\n" +
-      langInstruction + "\n" +
-      "User Profile: " + JSON.stringify(profile) + "\n\n" +
-      "Pre-computed Matches: " + JSON.stringify(context);
-
     try {
-      // Primary attempt: gemini-3.6-flash (current fast model)
-      const activeKey = apiKey || DEFAULT_API_KEY;
-      let response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${activeKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { text: `${systemPrompt}\n\nUser Question: ${question}` },
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 1024,
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        // Secondary attempt: gemini-3.7-flash
-        response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${activeKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts: [
-                    { text: `${systemPrompt}\n\nUser Question: ${question}` },
-                  ],
-                },
-              ],
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 1024,
-              },
-            }),
-          }
-        );
+      // Secure server-side AI proxy (Never exposes API keys to client browser)
+      const token = localStorage.getItem("scheme_matcher_auth_token");
+      const headers = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
       }
 
+      const response = await fetch("/api/assistant", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          question,
+          user_profile: profile,
+          matched_schemes: matches,
+          lang,
+        }),
+      });
+
       if (!response.ok) {
-        throw new Error(`Gemini API returned status ${response.status}`);
+        throw new Error(`Server returned HTTP ${response.status}`);
       }
 
       const data = await response.json();
-      const answer =
-        data.candidates?.[0]?.content?.parts?.[0]?.text ||
-        generateOfflineGroundedResponse(question);
-
+      const answer = data.answer || generateOfflineGroundedResponse(question);
       setMessages((m) => [...m, { role: "assistant", text: answer }]);
     } catch (err) {
-      console.warn("Falling back to grounded offline engine:", err);
+      console.warn("Server AI proxy unreachable, using local deterministic engine:", err.message);
       const fallbackText = generateOfflineGroundedResponse(question);
       setMessages((m) => [
         ...m,
@@ -248,14 +167,14 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
           </p>
         </div>
 
-        {/* Gemini Active Badge */}
+        {/* Secure Server Proxy Badge */}
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              padding: "5px 11px",
+              padding: "5px 12px",
               fontFamily: sans,
               fontSize: 12,
               fontWeight: 600,
@@ -265,82 +184,11 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
               borderRadius: 20,
             }}
           >
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: OK }}></span>
-            <span>Gemini AI Active</span>
+            <ShieldCheck size={14} color={OK} />
+            <span>Secure Server AI Proxy</span>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setShowKeyDialog(!showKeyDialog)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              fontFamily: sans,
-              fontSize: 12,
-              background: "#FFFFFF",
-              border: `1px solid ${RULE}`,
-              color: INK,
-              borderRadius: 4,
-              cursor: "pointer",
-            }}
-            title="Configure API key"
-          >
-            <Key size={12} />
-            <span>Key</span>
-          </button>
         </div>
       </div>
-
-      {/* API Key Modal / Drawer */}
-      {showKeyDialog && (
-        <div
-          style={{
-            background: "#FFFFFF",
-            border: `1px solid ${RULE}`,
-            borderRadius: 6,
-            padding: "14px 18px",
-            marginBottom: 16,
-            boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-          }}
-        >
-          <div style={{ fontFamily: sans, fontSize: 13, fontWeight: 700, color: INK, marginBottom: 4 }}>
-            Google Gemini API Key Configured
-          </div>
-          <div style={{ fontFamily: sans, fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
-            Live inference active using model <strong style={{ color: INK }}>gemini-3.6-flash</strong>.
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              type="text"
-              defaultValue={apiKey}
-              id="gemini-key-input"
-              style={{ ...inputStyle, flex: 1, padding: "7px 10px", fontSize: 12, fontFamily: "monospace" }}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                const val = document.getElementById("gemini-key-input")?.value || "";
-                saveApiKey(val);
-              }}
-              style={{
-                background: SEAL,
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: 4,
-                padding: "0 14px",
-                fontFamily: sans,
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Update
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Suggested Prompt Chips */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
@@ -418,7 +266,7 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
         {loading && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: sans, fontSize: 12.5, color: "#8A8266" }}>
             <Sparkles size={14} color={SEAL} />
-            <span>Consulting Gemini live inference engine…</span>
+            <span>Consulting AI inference engine securely…</span>
           </div>
         )}
       </div>
