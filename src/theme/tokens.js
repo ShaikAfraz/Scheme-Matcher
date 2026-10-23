@@ -4,17 +4,17 @@
  * Sandstone, Warm Ivory, Terracotta Accent, and Deep Slate Navy
  */
 
-export const INK = "#162032";          // Primary text & headings (deep navy slate)
+export const INK = "#121926";          // Primary text & headings (deep navy ink)
 export const INK_MUTED = "#475569";    // Secondary text (slate gray, accessible contrast)
 export const INK_LIGHT = "#64748B";    // Tertiary / caption text
 
-export const PAPER = "#F8F6F0";        // Natural sandstone warm page background
-export const CARD = "#FFFFFF";         // Clean elevated content surface
-export const SURFACE_MUTED = "#F2EFE8";// Subdued toolbar / table header background
+export const PAPER = "#FAF8F5";        // Natural warm ivory page background
+export const CARD = "#FFFFFF";         // Clean content surface
+export const SURFACE_MUTED = "#F4EFEA";// Subdued neutral section background
 
-export const SEAL = "#A35619";         // Terracotta civic accent (buttons, primary links)
-export const SEAL_HOVER = "#8A440F";   // Hover state for primary buttons
-export const SEAL_LIGHT = "#FDF6EC";   // Subtle terracotta tint for highlights
+export const SEAL = "#B45309";         // Rich Terracotta accent (buttons, highlights)
+export const SEAL_HOVER = "#92400E";   // Hover state for primary buttons
+export const SEAL_LIGHT = "#FDF6EC";   // Subtle terracotta tint for badges
 
 export const OK = "#1B5E3C";           // Deep forest green for verified / satisfied criteria
 export const OK_BG = "#EDF7ED";        // Soft green background
@@ -23,10 +23,10 @@ export const VERIFY_BG = "#FEF9C3";    // Soft amber background
 export const NO = "#991B1B";           // Deep crimson for unmet requirements
 export const NO_BG = "#FEE2E2";        // Soft crimson background
 
-export const RULE = "#DCD5C4";         // Crisp hairline border
-export const RULE_LIGHT = "#EAE4D6";   // Soft inner divider
+export const RULE = "#E2DCD2";         // Crisp hairline border
+export const RULE_LIGHT = "#EDE8DF";   // Soft inner divider
 
-export const serif = "'Cinzel', Georgia, 'Times New Roman', serif";
+export const serif = "'Lora', 'Cinzel', Georgia, serif";
 export const sans = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
 export const inputStyle = {

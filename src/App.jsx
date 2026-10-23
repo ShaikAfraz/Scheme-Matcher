@@ -17,6 +17,7 @@ import {
   ExternalLink,
   PhoneCall,
   SlidersHorizontal,
+  Compass,
 } from "lucide-react";
 import AccessibilityBar from "./components/AccessibilityBar.jsx";
 import JargonBusterModal from "./components/JargonBuster.jsx";
@@ -406,18 +407,18 @@ export default function App() {
         />
       </div>
 
-      {/* Main Government Portal Header Masthead */}
+      {/* Editorial Civic Platform Header Masthead */}
       <header
         style={{
           background: "#FFFFFF",
           borderBottom: `1px solid ${RULE}`,
-          padding: "12px clamp(12px, 3.5vw, 40px) 0 clamp(12px, 3.5vw, 40px)",
-          boxShadow: "0 1px 3px rgba(22, 32, 50, 0.04)",
+          padding: "12px clamp(16px, 3.5vw, 32px) 0 clamp(16px, 3.5vw, 32px)",
+          boxShadow: "0 1px 3px rgba(18, 25, 38, 0.03)",
         }}
       >
         <div
           style={{
-            maxWidth: 1060,
+            maxWidth: 1180,
             margin: "0 auto",
             display: "flex",
             justifyContent: "space-between",
@@ -426,17 +427,17 @@ export default function App() {
             gap: 12,
           }}
         >
-          {/* Official Emblem & Portal Title */}
+          {/* Brand Mark & Title */}
           <div
             onClick={() => navigateTo("home", "slide-backward")}
             style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
           >
             <div
               style={{
-                width: 40,
-                height: 40,
+                width: 38,
+                height: 38,
                 borderRadius: 4,
-                background: "#F8F6F0",
+                background: "#FDF6EC",
                 border: `1px solid ${SEAL}`,
                 display: "flex",
                 alignItems: "center",
@@ -444,14 +445,14 @@ export default function App() {
                 flexShrink: 0,
               }}
             >
-              <Landmark size={22} color={SEAL} />
+              <Compass size={20} color={SEAL} />
             </div>
             <div>
-              <div style={{ fontFamily: serif, fontSize: 20, color: INK, fontWeight: 700, lineHeight: 1.2 }}>
-                {t.appName}
+              <div style={{ fontFamily: serif, fontSize: 21, color: INK, fontWeight: 700, lineHeight: 1.2 }}>
+                Scheme Matcher
               </div>
-              <div style={{ fontFamily: sans, fontSize: 11, color: "#64748B", marginTop: 2, fontWeight: 500 }}>
-                Ministry of Social Justice &amp; Empowerment · Government of India
+              <div style={{ fontFamily: sans, fontSize: 11.5, color: "#64748B", marginTop: 2, fontWeight: 500 }}>
+                Civic Welfare &amp; Micro-Enterprise Discovery Engine
               </div>
             </div>
           </div>
@@ -590,7 +591,7 @@ export default function App() {
         </div>
 
         {/* PRIMARY WEBSITE NAVIGATION BAR (REAL MULTI-PAGE TABS) */}
-        <div style={{ maxWidth: 1060, margin: "10px auto 0 auto", overflowX: "auto" }}>
+        <div style={{ maxWidth: 1180, margin: "10px auto 0 auto", overflowX: "auto" }}>
           <nav style={{ display: "flex", gap: 4, minWidth: "max-content", paddingBottom: 0 }}>
             {[
               { id: "home", label: "Home", icon: HomeIcon },
@@ -678,10 +679,10 @@ export default function App() {
       <main
         style={{
           flex: 1,
-          maxWidth: 1040,
           width: "100%",
-          margin: "18px auto 36px auto",
-          padding: "0 clamp(12px, 3.5vw, 40px)",
+          maxWidth: screen === "home" ? "100%" : 1180,
+          margin: screen === "home" ? "0" : "18px auto 44px auto",
+          padding: screen === "home" ? "0" : "0 clamp(16px, 3.5vw, 32px)",
           boxSizing: "border-box",
         }}
       >
@@ -862,29 +863,29 @@ export default function App() {
           </div>
         )}
 
-        {/* Main Application Container Surface */}
-        <div
-          style={{
-            background: "#FFFFFF",
-            border: `1px solid ${RULE}`,
-            borderRadius: 4,
-            padding: "clamp(20px, 3.5vw, 36px) clamp(20px, 4vw, 40px)",
-            minHeight: 520,
-            position: "relative",
-            boxShadow: "0 1px 3px rgba(22, 32, 50, 0.04)",
-          }}
-        >
-          {/* Animated View Container */}
-          <div key={screen} className={transitionDir}>
-            {screen === "home" && (
-              <Home
-                setScreen={navigateTo}
-                onOpenCsc={() => setIsCscOpen(true)}
-                lang={lang}
-              />
-            )}
-
-            {screen === "login" && (
+        {/* Main Application View Surface */}
+        {screen === "home" ? (
+          <div key="home" className={transitionDir}>
+            <Home
+              setScreen={navigateTo}
+              onOpenCsc={() => setIsCscOpen(true)}
+              lang={lang}
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              background: "#FFFFFF",
+              border: `1px solid ${RULE}`,
+              borderRadius: 4,
+              padding: "clamp(20px, 3.5vw, 36px) clamp(20px, 4vw, 40px)",
+              minHeight: 520,
+              position: "relative",
+              boxShadow: "0 1px 3px rgba(18, 25, 38, 0.03)",
+            }}
+          >
+            <div key={screen} className={transitionDir}>
+              {screen === "login" && (
               <Login
                 currentUser={currentUser}
                 onLogin={handleUserLogin}
@@ -978,51 +979,52 @@ export default function App() {
             )}
           </div>
         </div>
+      )}
       </main>
 
-      {/* Official Government of India Portal Footer */}
+      {/* Professional Civic Platform Footer */}
       <footer
         style={{
-          background: "#162032",
+          background: "#121926",
           color: "#E2E8F0",
           borderTop: `3px solid ${SEAL}`,
-          padding: "36px clamp(16px, 4vw, 40px) 24px clamp(16px, 4vw, 40px)",
+          padding: "44px clamp(16px, 4vw, 36px) 28px clamp(16px, 4vw, 36px)",
           fontFamily: sans,
           marginTop: "auto",
         }}
       >
-        <div style={{ maxWidth: 1060, margin: "0 auto" }}>
+        <div style={{ maxWidth: 1180, margin: "0 auto" }}>
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 28,
-              paddingBottom: 24,
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: 36,
+              paddingBottom: 28,
               borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
             }}
           >
-            {/* Ministry Col */}
+            {/* Mission Col */}
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#FFFFFF", marginBottom: 8 }}>
-                <Landmark size={20} color="#D97706" />
-                <span style={{ fontWeight: 700, fontSize: 15, fontFamily: serif }}>
-                  Scheme Matcher &amp; Tracker
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#FFFFFF", marginBottom: 10 }}>
+                <Compass size={20} color="#FDE68A" />
+                <span style={{ fontWeight: 700, fontSize: 16, fontFamily: serif }}>
+                  Scheme Matcher
                 </span>
               </div>
-              <p style={{ fontSize: 12.5, color: "#94A3B8", lineHeight: 1.6, margin: "0 0 10px 0" }}>
-                Assistive Decision-Support Platform for Affirmative Action and Financial Inclusion Schemes.
+              <p style={{ fontSize: 13, color: "#94A3B8", lineHeight: 1.6, margin: "0 0 12px 0" }}>
+                Independent civic-technology discovery platform matching Indian artisans, micro-entrepreneurs, and citizens to official central and state welfare programs.
               </p>
-              <div style={{ fontSize: 11.5, color: "#94A3B8", background: "rgba(255,255,255,0.05)", padding: "6px 10px", borderRadius: 4, borderLeft: "3px solid #D97706" }}>
-                Academic Project Demonstration · BCA AI/ML Final Year
+              <div style={{ fontSize: 11.5, color: "#CBD5E1", background: "rgba(255,255,255,0.06)", padding: "8px 12px", borderRadius: 4, borderLeft: `3px solid ${SEAL}` }}>
+                Academic Research &amp; Demonstration Project · Final Year BCA AI/ML
               </div>
             </div>
 
-            {/* Quick Links Col */}
+            {/* Official Portals Col */}
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.5, marginBottom: 10 }}>
-                NATIONAL GOVERNMENT PORTALS
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.8, marginBottom: 12, textTransform: "uppercase" }}>
+                Authentic National Portals
               </div>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 12.5, display: "flex", flexDirection: "column", gap: 6 }}>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
                 <li>
                   <a href="https://www.india.gov.in" target="_blank" rel="noreferrer" style={{ color: "#CBD5E1", textDecoration: "none" }}>
                     National Portal of India (india.gov.in) ↗
@@ -1039,8 +1041,13 @@ export default function App() {
                   </a>
                 </li>
                 <li>
+                  <a href="https://udyamregistration.gov.in" target="_blank" rel="noreferrer" style={{ color: "#CBD5E1", textDecoration: "none" }}>
+                    Udyam MSME Registration Portal ↗
+                  </a>
+                </li>
+                <li>
                   <a href="https://www.standupmitra.in" target="_blank" rel="noreferrer" style={{ color: "#CBD5E1", textDecoration: "none" }}>
-                    Stand-Up Mitra Financial Portal ↗
+                    Stand-Up Mitra Portal ↗
                   </a>
                 </li>
               </ul>
