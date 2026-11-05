@@ -1,15 +1,43 @@
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,500;0,600;0,700;1,400&family=Noto+Sans:wght@400;500;600;700&display=swap');
 
 :root {
-  --color-ink: #121926;
+  --color-govt-navy: #0F2E5A;
+  --color-govt-navy-dark: #091D3B;
+  --color-govt-navy-light: #1E427B;
+  --color-saffron: #E06714;
+  --color-saffron-hover: #C55309;
+  --color-saffron-light: #FFF7ED;
+
+  --color-ink: #0F172A;
   --color-ink-muted: #475569;
-  --color-paper: #FAF8F5;
+  --color-ink-light: #64748B;
+
+  --color-paper: #F8FAFC;
   --color-card: #FFFFFF;
-  --color-seal: #B45309;
-  --color-ok: #1B5E3C;
-  --color-verify: #854D0E;
-  --color-no: #991B1B;
-  --color-rule: #E2DCD2;
+  --color-surface-muted: #F1F5F9;
+
+  --color-ok: #15803D;
+  --color-ok-bg: #DCFCE7;
+  --color-ok-border: #86EFAC;
+
+  --color-verify: #B45309;
+  --color-verify-bg: #FEF3C7;
+  --color-verify-border: #FCD34D;
+
+  --color-no: #B91C1C;
+  --color-no-bg: #FEE2E2;
+  --color-no-border: #FCA5A5;
+
+  --color-rule: #E2E8F0;
+  --color-rule-strong: #CBD5E1;
+
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --shadow-hover: 0 12px 24px -4px rgba(15, 46, 90, 0.12);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 'Noto Sans', sans-serif;
+  --font-serif: 'Lora', 'Noto Serif', Georgia, serif;
 }
 
 * {
@@ -19,60 +47,37 @@
 html, body {
   margin: 0;
   padding: 0;
-  background-color: #FAF8F5;
+  background-color: var(--color-paper);
   color: var(--color-ink);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
-/* Indian National Tricolor Accent Ribbon */
+/* ========================================================================= */
+/* 1. INDIAN NATIONAL TRICOLOR RIBBON                                         */
+/* ========================================================================= */
 .tricolor-ribbon {
-  height: 3px;
+  height: 4px;
   width: 100%;
   background: linear-gradient(90deg, #FF9933 0%, #FF9933 33.33%, #FFFFFF 33.33%, #FFFFFF 66.66%, #138808 66.66%, #138808 100%);
   position: relative;
   z-index: 100;
 }
 
-/* Crisp Government Portal Surface */
-.portal-card-elevated {
-  background: #FFFFFF;
-  border: 1px solid var(--color-rule);
-  border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(22, 32, 50, 0.04);
-}
-
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #F2EFE8;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #D0C9B6;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #B5AD97;
-}
-
-/* Accessible focus outlines */
+/* ========================================================================= */
+/* 2. ACCESSIBILITY FOCUS & FORM CONTROLS                                    */
+/* ========================================================================= */
 :focus-visible {
-  outline: 2px solid var(--color-seal);
+  outline: 2.5px solid var(--color-saffron);
   outline-offset: 2px;
 }
 
 input:focus, select:focus, textarea:focus {
-  border-color: var(--color-seal) !important;
-  box-shadow: 0 0 0 1px var(--color-seal) !important;
+  border-color: var(--color-govt-navy) !important;
+  box-shadow: 0 0 0 3px rgba(15, 46, 90, 0.12) !important;
   outline: none;
 }
 
@@ -80,138 +85,286 @@ button {
   font-family: inherit;
 }
 
-
-/* ============================================================= */
-/* SLIDE TRANSITIONS & ANIMATIONS                                */
-/* ============================================================= */
-
-/* Slide forward animation (Left to Right progression) */
-.slide-forward {
-  animation: slideInForward 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
 }
 
-/* Slide backward animation (Right to Left / Back navigation) */
-.slide-backward {
-  animation: slideInBackward 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
 }
 
-/* Gentle fade scale for modal / popups */
-.slide-fade {
-  animation: slideFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
 }
 
-@keyframes slideInForward {
-  0% {
-    opacity: 0;
-    transform: translateX(36px);
-    filter: blur(1.5px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-    filter: blur(0);
-  }
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
-@keyframes slideInBackward {
-  0% {
-    opacity: 0;
-    transform: translateX(-36px);
-    filter: blur(1.5px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-    filter: blur(0);
-  }
-}
-
-@keyframes slideFadeIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.985);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* View Transitions API configuration for progressive enhancement */
-::view-transition-old(root) {
-  animation: 0.25s ease-out both fade-out;
-}
-
-::view-transition-new(root) {
-  animation: 0.28s cubic-bezier(0.16, 1, 0.3, 1) both slide-in;
-}
-
-@keyframes fade-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* Accessibility: Respect Reduced Motion Preference */
-@media (prefers-reduced-motion: reduce) {
-  .slide-forward,
-  .slide-backward,
-  .slide-fade,
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
-    transform: none !important;
-    filter: none !important;
-  }
-}
-
-/* Slide presentation control buttons */
-.slide-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* ========================================================================= */
+/* 3. CARDS, SURFACES & BUTTONS                                              */
+/* ========================================================================= */
+.gov-card {
   background: #FFFFFF;
   border: 1px solid var(--color-rule);
-  color: var(--color-ink);
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: 4px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+}
+
+.gov-card:hover {
+  border-color: #CBD5E1;
+}
+
+.gov-card-interactive {
+  background: #FFFFFF;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
 }
 
-.slide-nav-btn:hover:not(:disabled) {
-  background: #F4EFE6;
-  border-color: #B8B098;
-}
-
-.slide-nav-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Demo Profile Card hover effect */
-.demo-profile-card {
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-}
-
-.demo-profile-card:hover {
+.gov-card-interactive:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(35, 50, 74, 0.08);
-  border-color: var(--color-seal);
+  box-shadow: var(--shadow-hover);
+  border-color: #93C5FD;
+}
+
+.gov-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--color-govt-navy);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  transition: background-color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+}
+
+.gov-btn-primary:hover:not(:disabled) {
+  background-color: var(--color-govt-navy-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(15, 46, 90, 0.15);
+}
+
+.gov-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.gov-btn-saffron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--color-saffron);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(224, 103, 20, 0.2);
+  transition: background-color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+}
+
+.gov-btn-saffron:hover:not(:disabled) {
+  background-color: var(--color-saffron-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(224, 103, 20, 0.25);
+}
+
+.gov-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: #FFFFFF;
+  color: var(--color-ink);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--color-rule-strong);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.gov-btn-secondary:hover:not(:disabled) {
+  background-color: #F8FAFC;
+  border-color: #94A3B8;
+  transform: translateY(-1px);
+}
+
+/* ========================================================================= */
+/* 4. SMOOTH PROFESSIONAL ANIMATIONS & TRANSITIONS                           */
+/* ========================================================================= */
+
+/* Screen & Page transitions */
+.page-fade {
+  animation: pageFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.slide-forward {
+  animation: slideForwardIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.slide-backward {
+  animation: slideBackwardIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideForwardIn {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideBackwardIn {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Staggered list items */
+.stagger-item {
+  animation: staggerFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes staggerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modal and Drawer transitions */
+.modal-backdrop {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+  animation: backdropFadeIn 0.2s ease both;
+}
+
+.modal-dialog {
+  animation: dialogScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialogScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Shimmer Loading Skeleton */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Toast notification */
+.toast-slide-up {
+  animation: toastSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes toastSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================================================================= */
+/* 5. ACCESSIBILITY: PREFERS REDUCED MOTION                                 */
+/* ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .page-fade,
+  .slide-forward,
+  .slide-backward,
+  .stagger-item,
+  .modal-dialog,
+  .toast-slide-up {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+/* ========================================================================= */
+/* 6. PRINT STYLES FOR BANK DOSSIER & CITIZEN RECORDS                        */
+/* ========================================================================= */
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+  header, footer, .tricolor-ribbon, .no-print, button:not(.print-include) {
+    display: none !important;
+  }
+  .gov-card {
+    border: 1px solid #CCCCCC !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
 }

@@ -23,6 +23,7 @@ import {
   Lock,
 } from "lucide-react";
 import { INK, CARD, SEAL, OK, VERIFY, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
+import { TRANSLATIONS } from "../theme/i18n.js";
 import BankDossierModal from "../components/BankDossierModal.jsx";
 
 const DOCUMENT_TYPES = [
@@ -46,7 +47,9 @@ export default function Documents({
   currentUser = null,
   authToken = null,
   schemes = [],
+  lang = "en",
 }) {
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
   const [selectedType, setSelectedType] = useState("income");
   const [targetSchemeId, setTargetSchemeId] = useState("");
   const [dragActive, setDragActive] = useState(false);
@@ -301,7 +304,7 @@ export default function Documents({
     }
   };
 
-  // Auto-fill profile demo trigger based on documents
+  // Auto-fill profile based on verified documents
   const autoFillFromDocs = () => {
     let incomeFromDoc = profile.income;
     let nameFromDoc = profile.name;
@@ -317,13 +320,13 @@ export default function Documents({
 
     setProfile((prev) => ({
       ...prev,
-      name: nameFromDoc || prev.name || "Sunita Sharma",
-      age: prev.age || 29,
-      gender: prev.gender || "Female",
-      category: prev.category || "OBC",
-      state: prev.state || "Karnataka",
-      income: incomeFromDoc || prev.income || 180000,
-      financialRequirement: prev.financialRequirement || 300000,
+      name: nameFromDoc || prev.name,
+      age: prev.age,
+      gender: prev.gender,
+      category: prev.category,
+      state: prev.state,
+      income: incomeFromDoc || prev.income,
+      financialRequirement: prev.financialRequirement,
     }));
 
     setUploadStatus({
@@ -379,10 +382,10 @@ export default function Documents({
             Digital Document Repository &amp; Verification Desk
           </div>
           <h2 style={{ fontFamily: serif, fontSize: 26, color: INK, margin: "0 0 6px 0", fontWeight: 700 }}>
-            Secure Document Vault &amp; Bank Dossier
+            {t.documentsMainTitle || "Secure Document Vault & Bank Dossier"}
           </h2>
           <p style={{ fontFamily: sans, fontSize: 13.5, color: "#475569", margin: "0 0 16px 0", lineHeight: 1.5 }}>
-            Upload self-attested identity, social category, income, and business credentials. Files are stored in encrypted private storage, automatically parsed with OCR, and deterministically verified against scheme statutory requirements.
+            {t.documentsMainSubtitle || "Upload self-attested identity, social category, income, and business credentials. Files are stored in encrypted private storage, automatically parsed with OCR, and deterministically verified against scheme statutory requirements."}
           </p>
         </div>
 
@@ -408,7 +411,7 @@ export default function Documents({
               title="Preview and print official summary dossier"
             >
               <Printer size={14} color="#D97706" />
-              <span>Print Bank Dossier</span>
+              <span>{t.generateDossierBtn || "Print Bank Dossier"}</span>
             </button>
           )}
 
@@ -584,10 +587,10 @@ export default function Documents({
                 <UploadCloud size={24} color={SEAL} />
               </div>
               <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 600, color: INK, marginBottom: 3 }}>
-                Click to select genuine certificate or drag and drop file here
+                {t.dragDropNotice || "Click to select genuine certificate or drag and drop file here"}
               </div>
               <div style={{ fontFamily: sans, fontSize: 12, color: "#64748B" }}>
-                Accepted formats: <strong>PDF, JPG, PNG</strong> up to <strong>10 MB</strong>
+                {t.supportedFormats || "Accepted formats: PDF, JPG, PNG up to 10 MB"}
               </div>
             </>
           )}

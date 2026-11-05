@@ -8,9 +8,27 @@ import {
   CheckCircle2,
   Building2,
   KeyRound,
-  Compass,
+  Eye,
+  EyeOff,
+  Mail,
+  ChevronLeft,
 } from "lucide-react";
-import { INK, PAPER, CARD, SEAL, OK, NO, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
+import {
+  GOVT_NAVY,
+  GOVT_NAVY_DARK,
+  SAFFRON,
+  INK,
+  INK_MUTED,
+  PAPER,
+  CARD,
+  OK,
+  NO,
+  NO_BG,
+  RULE,
+  RULE_STRONG,
+  serif,
+  sans,
+} from "../theme/tokens.js";
 import { setStoredAuthToken } from "../data/demoProfiles.js";
 
 export default function AdminLogin({
@@ -19,8 +37,9 @@ export default function AdminLogin({
   setScreen,
   onBack,
 }) {
-  const [adminEmail, setAdminEmail] = useState("yuvrajc5027@gmail.com");
-  const [adminPassword, setAdminPassword] = useState("yuvraj1234");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isDenied, setIsDenied] = useState(false);
@@ -29,16 +48,16 @@ export default function AdminLogin({
     e.preventDefault();
     setErrorMsg("");
     setIsDenied(false);
-    setLoading(true);
 
     const emailTrim = adminEmail.trim().toLowerCase();
     const passTrim = adminPassword.trim();
 
     if (!emailTrim || !passTrim) {
-      setErrorMsg("Please enter both administrative credentials.");
-      setLoading(false);
+      setErrorMsg("Please enter administrative credentials.");
       return;
     }
+
+    setLoading(true);
 
     try {
       const res = await fetch("/api/auth/admin/login", {
@@ -77,17 +96,17 @@ export default function AdminLogin({
   };
 
   return (
-    <div style={{ maxWidth: 540, margin: "30px auto" }}>
+    <div style={{ maxWidth: 520, margin: "24px auto 48px auto", fontFamily: sans }}>
       {/* Gov Tricolor Top Accent */}
-      <div style={{ height: 4, background: "linear-gradient(90deg, #FF9933 33.3%, #FFFFFF 33.3%, #FFFFFF 66.6%, #138808 66.6%)", borderRadius: "4px 4px 0 0", marginBottom: 2 }} />
+      <div className="tricolor-ribbon" style={{ borderRadius: "4px 4px 0 0" }} />
 
       <div
+        className="gov-card"
         style={{
-          background: "#FFFFFF",
-          border: `1px solid ${RULE}`,
-          borderRadius: 4,
-          padding: "32px 36px",
-          boxShadow: "0 4px 16px rgba(18, 25, 38, 0.06)",
+          padding: "clamp(24px, 4vw, 36px)",
+          borderTop: "none",
+          borderRadius: "0 0 8px 8px",
+          boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.08)",
         }}
       >
         {/* Institutional Masthead */}
@@ -97,141 +116,200 @@ export default function AdminLogin({
               width: 52,
               height: 52,
               margin: "0 auto 12px auto",
-              borderRadius: 6,
-              background: "#1E293B",
-              border: "1px solid #334155",
+              borderRadius: "50%",
+              background: "#EFF6FF",
+              border: "1px solid #BFDBFE",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#FDE68A",
+              color: GOVT_NAVY,
             }}
           >
-            <ShieldCheck size={28} />
+            <Building2 size={26} color={GOVT_NAVY} />
           </div>
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: SEAL, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>
-            Institutional Administration
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: SAFFRON,
+              letterSpacing: 1,
+              textTransform: "uppercase",
+              marginBottom: 4,
+            }}
+          >
+            Institutional Administrative Portal
           </div>
-          <h2 style={{ fontFamily: serif, fontSize: 22, color: INK, margin: "0 0 6px 0", fontWeight: 700 }}>
-            Scheme Matcher Central Desk
-          </h2>
-          <p style={{ fontSize: 12.5, color: "#64748B", margin: 0, lineHeight: 1.45 }}>
-            Restricted portal for scheme catalog administrators, nodal officers, and document verification reviewers.
+
+          <h1
+            style={{
+              fontFamily: serif,
+              fontSize: 22,
+              fontWeight: 700,
+              color: GOVT_NAVY,
+              margin: "0 0 6px 0",
+            }}
+          >
+            Lead Administrator Desk
+          </h1>
+
+          <p style={{ fontSize: 13, color: INK_MUTED, margin: 0 }}>
+            Restricted access for designated welfare officers &amp; nodal administrators.
           </p>
         </div>
 
-        {/* Error / Denial Alert */}
+        {/* Security Advisory Pill */}
+        <div
+          style={{
+            background: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            borderRadius: 6,
+            padding: "10px 14px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: "#92400E",
+            fontSize: 12.5,
+          }}
+        >
+          <Lock size={15} style={{ flexShrink: 0 }} />
+          <span>Authorized administrative sessions are logged and cryptographically audited.</span>
+        </div>
+
+        {/* Error Alert */}
         {errorMsg && (
           <div
             style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 10,
-              background: isDenied ? "#FEF2F2" : "#FFFBEB",
-              border: `1px solid ${isDenied ? "#FECACA" : "#FDE68A"}`,
-              borderRadius: 4,
+              background: NO_BG,
+              border: "1px solid #FCA5A5",
+              borderRadius: 6,
               padding: "10px 14px",
               marginBottom: 18,
-              color: isDenied ? "#991B1B" : "#92400E",
-              fontSize: 12.5,
-              lineHeight: 1.45,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              color: NO,
+              fontSize: 13,
             }}
           >
-            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <strong>{isDenied ? "Access Denied:" : "Authentication Failure:"}</strong> {errorMsg}
-            </div>
+            <ShieldAlert size={16} style={{ flexShrink: 0 }} />
+            <span>{errorMsg}</span>
           </div>
         )}
 
-        {/* Login Form */}
-        <form onSubmit={handleAdminSignIn}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 5 }}>
-              Administrative Identifier / Official Email
+        {/* Admin Login Form */}
+        <form onSubmit={handleAdminSignIn} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: INK, marginBottom: 6 }}>
+              Administrator Email ID <span style={{ color: NO }}>*</span>
             </label>
-            <input
-              type="email"
-              value={adminEmail}
-              onChange={(e) => setAdminEmail(e.target.value)}
-              placeholder="yuvrajc5027@gmail.com"
-              style={inputStyle}
-              required
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type="email"
+                required
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                placeholder="e.g. admin@directorate.gov.in"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "10px 12px 10px 38px",
+                  borderRadius: 6,
+                  border: `1px solid ${RULE_STRONG}`,
+                  fontSize: 14,
+                  color: INK,
+                }}
+              />
+              <Mail size={16} color="#64748B" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+            </div>
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: INK, marginBottom: 5 }}>
-              Security Clearance Password
+          <div>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: INK, marginBottom: 6 }}>
+              Administrative Security Key <span style={{ color: NO }}>*</span>
             </label>
-            <input
-              type="password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              placeholder="••••••••••••"
-              style={inputStyle}
-              required
-            />
-          </div>
-
-          <div style={{ background: "#F8F6F0", border: `1px solid ${RULE}`, borderRadius: 4, padding: "8px 12px", marginBottom: 18, fontSize: 11.5, color: "#475569" }}>
-            <strong>Administrator Credentials:</strong><br />
-            <code>yuvrajc5027@gmail.com</code> / <code>yuvraj1234</code> (Administrator: Yuvraj Choudhary)
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                placeholder="Enter admin password"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "10px 38px 10px 38px",
+                  borderRadius: 6,
+                  border: `1px solid ${RULE_STRONG}`,
+                  fontSize: 14,
+                  color: INK,
+                }}
+              />
+              <Lock size={16} color="#64748B" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#64748B",
+                  padding: 0,
+                }}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
+            className="gov-btn-primary"
             style={{
               width: "100%",
-              padding: "11px 16px",
-              background: "#1E293B",
-              color: "#FFFFFF",
-              border: "none",
-              borderRadius: 4,
+              padding: "11px",
               fontSize: 14,
-              fontWeight: 600,
-              cursor: loading ? "wait" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+              marginTop: 6,
             }}
           >
-            <KeyRound size={16} />
-            <span>{loading ? "Verifying Authorization..." : "Access Administrative Console"}</span>
+            {loading ? (
+              <span>Authenticating Administrator...</span>
+            ) : (
+              <>
+                <ShieldCheck size={16} />
+                <span>Verify Administrative Access</span>
+                <ArrowRight size={15} />
+              </>
+            )}
           </button>
         </form>
 
-        {/* Statutory Compliance Footer Strip */}
-        <div
-          style={{
-            marginTop: 22,
-            paddingTop: 16,
-            borderTop: `1px solid ${RULE}`,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: 12,
-            color: "#64748B",
-          }}
-        >
+        {/* Back Link */}
+        <div style={{ textAlign: "center", marginTop: 20 }}>
           <button
             type="button"
             onClick={() => setScreen("home")}
             style={{
               background: "none",
               border: "none",
-              color: SEAL,
-              fontWeight: 600,
+              color: "#64748B",
+              fontSize: 13,
               cursor: "pointer",
-              padding: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
             }}
           >
-            ← Return to Citizen Portal
+            <ChevronLeft size={14} />
+            <span>Return to Public Citizen Portal</span>
           </button>
-          <span>Secured with Scrypt &amp; RBAC</span>
         </div>
       </div>
     </div>

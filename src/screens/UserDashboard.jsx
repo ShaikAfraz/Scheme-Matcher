@@ -27,6 +27,8 @@ import { INK, PAPER, CARD, SEAL, OK, VERIFY, NO, RULE, inputStyle, serif, sans }
 import { getStoredAuthToken, setStoredActiveUser } from "../data/demoProfiles.js";
 import { TRANSLATIONS } from "../theme/i18n.js";
 import BankDossierModal from "../components/BankDossierModal.jsx";
+import { parseFinancialAmount, formatINRLakhs } from "../utils/financialInput.js";
+import { getRatingLabel } from "../engine/matcher.js";
 
 const STATES = [
   "Andhra Pradesh",
@@ -56,14 +58,15 @@ export default function UserDashboard({
   onOpenDetails,
   lang = "en",
 }) {
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
   const [activeTab, setActiveTab] = useState("profile"); // "profile" | "assessments" | "bookmarks" | "applications"
   const [profileForm, setProfileForm] = useState(() => ({
-    age: currentUser?.profileData?.age || 28,
+    age: currentUser?.profileData?.age != null ? currentUser.profileData.age : 28,
     gender: currentUser?.profileData?.gender || "Female",
     state: currentUser?.profileData?.state || "Uttar Pradesh",
     category: currentUser?.profileData?.category || "SC",
-    income: currentUser?.profileData?.income || 150000,
-    financialRequirement: currentUser?.profileData?.financialRequirement || 250000,
+    income: currentUser?.profileData?.income != null ? currentUser.profileData.income : 150000,
+    financialRequirement: currentUser?.profileData?.financialRequirement != null ? currentUser.profileData.financialRequirement : 250000,
     businessStatus: currentUser?.profileData?.businessStatus || "new",
     businessType: currentUser?.profileData?.businessType || "Manufacturing",
     education: currentUser?.profileData?.education || "Graduate",
@@ -99,12 +102,12 @@ export default function UserDashboard({
   useEffect(() => {
     if (currentUser?.profileData) {
       setProfileForm({
-        age: currentUser.profileData.age || 28,
+        age: currentUser.profileData.age != null ? currentUser.profileData.age : 28,
         gender: currentUser.profileData.gender || "Female",
         state: currentUser.profileData.state || "Uttar Pradesh",
         category: currentUser.profileData.category || "SC",
-        income: currentUser.profileData.income || 150000,
-        financialRequirement: currentUser.profileData.financialRequirement || 250000,
+        income: currentUser.profileData.income != null ? currentUser.profileData.income : 150000,
+        financialRequirement: currentUser.profileData.financialRequirement != null ? currentUser.profileData.financialRequirement : 250000,
         businessStatus: currentUser.profileData.businessStatus || "new",
         businessType: currentUser.profileData.businessType || "Manufacturing",
         education: currentUser.profileData.education || "Graduate",
@@ -187,6 +190,20 @@ export default function UserDashboard({
     setSaveSuccessMsg("");
     setSaveErrorMsg("");
 
+    const incomeVal = parseFinancialAmount(profileForm.income);
+    if (!incomeVal.valid) {
+      setSaveErrorMsg(incomeVal.error || "Please enter a valid non-negative income amount.");
+      setSavingProfile(false);
+      return;
+    }
+
+    const reqVal = parseFinancialAmount(profileForm.financialRequirement);
+    if (!reqVal.valid) {
+      setSaveErrorMsg(reqVal.error || "Please enter a valid financial requirement amount.");
+      setSavingProfile(false);
+      return;
+    }
+
     const token = getStoredAuthToken();
     if (!token) {
       setSaveErrorMsg("Authentication session expired. Please log in again.");
@@ -204,8 +221,8 @@ export default function UserDashboard({
         body: JSON.stringify({
           ...profileForm,
           age: Number(profileForm.age),
-          income: Number(profileForm.income),
-          financialRequirement: Number(profileForm.financialRequirement),
+          income: incomeVal.numeric,
+          financialRequirement: reqVal.numeric,
         }),
       });
       const data = await res.json();
@@ -359,7 +376,7 @@ export default function UserDashboard({
             }}
           >
             <Sparkles size={14} />
-            <span>Discover Schemes</span>
+            <span>{t.findSchemesBtn ? t.findSchemesBtn.replace(" ➔", "") : "Discover Schemes"}</span>
           </button>
           <button
             onClick={() => setScreen("documents")}
@@ -378,7 +395,7 @@ export default function UserDashboard({
             }}
           >
             <FolderUp size={14} />
-            <span>Vault</span>
+            <span>{t.navDocuments || "Vault"}</span>
           </button>
           <button
             onClick={() => setShowDossierModal(true)}
@@ -398,7 +415,7 @@ export default function UserDashboard({
             title="Generate and view official Lead Bank Dossier"
           >
             <FileText size={14} />
-            <span>Bank Dossier</span>
+            <span>{t.cscSlipBtn ? t.cscSlipBtn.replace(" 🖨️", "") : "Bank Dossier"}</span>
           </button>
           <button
             onClick={onLogout}
@@ -418,7 +435,7 @@ export default function UserDashboard({
             title="Log out of citizen portal"
           >
             <LogOut size={14} />
-            <span>Log Out</span>
+            <span>{t.logout || "Log Out"}</span>
           </button>
         </div>
       </div>
@@ -434,11 +451,11 @@ export default function UserDashboard({
         }}
       >
         {[
-          { id: "profile", label: "Edit Citizen Profile", icon: SlidersHorizontal },
-          { id: "vault", label: "Document Vault & Status", icon: ShieldCheck },
-          { id: "assessments", label: "Previous Assessments", icon: FileCheck2 },
-          { id: "bookmarks", label: "Saved Schemes", icon: Bookmark },
-          { id: "applications", label: "Track Applications", icon: Clock },
+          { id: "profile", label: t.tabProfile || "Edit Citizen Profile", icon: SlidersHorizontal },
+          { id: "vault", label: t.tabMyDocs || "Document Vault & Status", icon: ShieldCheck },
+          { id: "assessments", label: t.tabAssessments || "Previous Assessments", icon: FileCheck2 },
+          { id: "bookmarks", label: t.tabSaved || "Saved Schemes", icon: Bookmark },
+          { id: "applications", label: t.navTracker || "Track Applications", icon: Clock },
         ].map((tab) => {
           const isActive = activeTab === tab.id;
           const TabIcon = tab.icon;
@@ -482,12 +499,56 @@ export default function UserDashboard({
         >
           <div style={{ marginBottom: 20 }}>
             <h3 style={{ margin: "0 0 6px 0", fontFamily: serif, fontSize: 18, color: INK }}>
-              Citizen Demographic &amp; Enterprise Profile
+              {t.dashboardTitle || "Citizen Demographic & Enterprise Profile"}
             </h3>
             <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>
-              These parameters feed directly into the eligibility matcher algorithm to evaluate guidelines across central ministries and state schemes.
+              {t.dashboardSubtitle || "These parameters feed directly into the eligibility matcher algorithm to evaluate guidelines across central ministries and state schemes."}
             </p>
           </div>
+
+          {(!currentUser?.profileData || !currentUser?.profileData?.age) && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 12,
+                background: "#EFF6FF",
+                border: "1px solid #BFDBFE",
+                borderRadius: 6,
+                padding: "12px 16px",
+                marginBottom: 18,
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: 13.5, color: "#0F2E5A" }}>Your citizen demographic profile is incomplete</strong>
+                <div style={{ fontSize: 12.5, color: "#334155", marginTop: 2 }}>
+                  Complete your age, category, and income details below or take the step-by-step eligibility wizard to calculate matching welfare opportunities.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScreen("profile")}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "#E06714",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 4,
+                  padding: "7px 14px",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <span>Launch Eligibility Wizard</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+          )}
 
           {saveSuccessMsg && (
             <div
@@ -644,14 +705,32 @@ export default function UserDashboard({
                   Annual Family Income (₹)
                 </label>
                 <input
-                  type="number"
-                  min="0"
-                  step="5000"
+                  type="text"
+                  inputMode="numeric"
                   value={profileForm.income}
                   onChange={(e) => setProfileForm({ ...profileForm, income: e.target.value })}
                   style={inputStyle}
+                  placeholder="e.g. 150000 or 1,50,000"
                   required
                 />
+                {(() => {
+                  const parsed = parseFinancialAmount(profileForm.income);
+                  if (profileForm.income !== "" && profileForm.income !== undefined) {
+                    if (parsed.valid) {
+                      return (
+                        <div style={{ fontSize: 11, color: "#166534", marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>✓ Recognized: {formatINRLakhs(parsed.numeric)}</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={{ fontSize: 11, color: "#B91C1C", marginTop: 4 }}>
+                        {parsed.error}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               <div>
@@ -659,14 +738,32 @@ export default function UserDashboard({
                   Project Cost / Financial Requirement (₹)
                 </label>
                 <input
-                  type="number"
-                  min="1000"
-                  step="10000"
+                  type="text"
+                  inputMode="numeric"
                   value={profileForm.financialRequirement}
                   onChange={(e) => setProfileForm({ ...profileForm, financialRequirement: e.target.value })}
                   style={inputStyle}
+                  placeholder="e.g. 250000 or 2,50,000"
                   required
                 />
+                {(() => {
+                  const parsed = parseFinancialAmount(profileForm.financialRequirement);
+                  if (profileForm.financialRequirement !== "" && profileForm.financialRequirement !== undefined) {
+                    if (parsed.valid) {
+                      return (
+                        <div style={{ fontSize: 11, color: "#166534", marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>✓ Recognized: {formatINRLakhs(parsed.numeric)}</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={{ fontSize: 11, color: "#B91C1C", marginTop: 4 }}>
+                        {parsed.error}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               <div>
@@ -781,7 +878,7 @@ export default function UserDashboard({
               }}
             >
               <Save size={15} />
-              <span>{savingProfile ? "Saving to Database..." : "Save Profile & Refresh Matches"}</span>
+              <span>{savingProfile ? "Saving to Database..." : (t.saveChanges || "Save Profile & Refresh Matches")}</span>
             </button>
           </form>
         </div>
@@ -1264,7 +1361,7 @@ export default function UserDashboard({
                         </span>
                       )}
                       <span style={{ color: "#64748B" }}>
-                        · Total Evaluated: <strong>{a.totalEvaluated || 574}</strong> · Top Score: <strong style={{ color: OK }}>{a.topScore}%</strong>
+                        · Total Evaluated: <strong>{a.totalEvaluated || 574}</strong> · Top Match Rating: <strong style={{ color: OK }}>{a.topScore}/100 ({getRatingLabel(a.topScore)})</strong>
                       </span>
                     </div>
                   </div>
@@ -1510,14 +1607,14 @@ export default function UserDashboard({
                               app.status === "Sanctioned" || app.status === "Approved"
                                 ? "#F0FDF4"
                                 : app.status === "Under Review"
-                                ? "#FFFBEB"
-                                : "#EFF6FF",
+                                  ? "#FFFBEB"
+                                  : "#EFF6FF",
                             color:
                               app.status === "Sanctioned" || app.status === "Approved"
                                 ? "#166534"
                                 : app.status === "Under Review"
-                                ? "#92400E"
-                                : "#1E40AF",
+                                  ? "#92400E"
+                                  : "#1E40AF",
                             border: "1px solid currentColor",
                             padding: "2px 8px",
                             borderRadius: 3,

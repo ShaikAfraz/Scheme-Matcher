@@ -354,8 +354,117 @@ if (Array.isArray(SCHEMES)) {
 }
 
 /**
+ * Documented baseline scoring criteria for citizen & enterprise eligibility matching.
+ * Total base weight = 100 points.
+ * When a criterion does not apply to a specific scheme (e.g., no income ceiling, open age),
+ * weights are dynamically normalized so that applicable criteria always sum to 100%.
+ */
+export const SCORING_CRITERIA_DOCS = [
+  {
+    id: "category",
+    name: "Social Category & Affirmative Action",
+    baseWeight: 25,
+    description: "Evaluates demographic alignment with designated affirmative action groups (SC, ST, OBC, EWS) and targeted beneficiaries (Women, Traditional Artisans, Sanitation Workers, PwD/Divyangjan, Transgender, Farmers, Students, Minorities).",
+  },
+  {
+    id: "income",
+    name: "Income Ceiling & Economic Fit",
+    baseWeight: 20,
+    description: "Evaluates annual family income against statutory scheme ceilings codified in official gazettes. Schemes with no income ceiling have this weight normalized across other active criteria.",
+  },
+  {
+    id: "age",
+    name: "Age Bounds & Demographics",
+    baseWeight: 15,
+    description: "Verifies whether applicant age satisfies statutory eligibility brackets. Schemes open to all age groups redistribute this weight.",
+  },
+  {
+    id: "location",
+    name: "Geographic Scope & Domicile",
+    baseWeight: 15,
+    description: "Evaluates state of residence against Pan-India central scope or state-restricted channelizing agencies.",
+  },
+  {
+    id: "occupation",
+    name: "Occupation & Enterprise Alignment",
+    baseWeight: 15,
+    description: "Evaluates livelihood alignment (e.g. Artisan, Farmer, Sanitation Worker, Vendor) and enterprise stage/sector. Non-commercial welfare and pension schemes redistribute this weight.",
+  },
+  {
+    id: "financial",
+    name: "Funding & Capital Assistance Scale",
+    baseWeight: 10,
+    description: "Matches requested funding to scheme capital subsidies or credit brackets. Direct welfare grants without loan requirements redistribute this weight.",
+  },
+];
+
+/**
+ * Returns human-readable rating tier for a given 0–100 match rating.
+ * Tiers:
+ * - 85–100: Excellent Match
+ * - 70–84: Strong Match
+ * - 50–69: Moderate Match
+ * - 25–49: Low Match
+ * - 1–24: Weak Match
+ * - 0: No Match
+ */
+export function getRatingLabel(rating) {
+  if (rating === null || rating === undefined || rating === "Not Assessed") {
+    return "Not Assessed";
+  }
+  const r = Number(rating);
+  if (isNaN(r)) return "Not Assessed";
+  if (r >= 85) return "Excellent Match";
+  if (r >= 70) return "Strong Match";
+  if (r >= 50) return "Moderate Match";
+  if (r >= 25) return "Low Match";
+  if (r >= 1) return "Weak Match";
+  return "No Match";
+}
+
+/**
+ * Checks whether a citizen profile has any meaningful demographic or economic criteria provided.
+ */
+export function isProfileEmpty(profile) {
+  if (!profile || typeof profile !== "object") return true;
+  const hasAge = profile.age != null && profile.age !== "" && !isNaN(profile.age) && Number(profile.age) > 0;
+  const cleanIncStr = typeof profile.income === "string" ? profile.income.replace(/[₹\s,]|rs\.?|inr/gi, "") : profile.income;
+  const hasIncome = cleanIncStr !== "" && cleanIncStr !== null && cleanIncStr !== undefined && !isNaN(cleanIncStr) && Number(cleanIncStr) >= 0;
+  const hasState = Boolean(profile.state && String(profile.state).trim() !== "" && String(profile.state).toUpperCase() !== "SELECT STATE / UT");
+  const hasCategory = Boolean(profile.category && String(profile.category).trim() !== "" && String(profile.category).toUpperCase() !== "SELECT");
+  const hasGender = Boolean(profile.gender && String(profile.gender).trim() !== "");
+  const hasOccupation = Boolean(profile.occupation && String(profile.occupation).trim() !== "");
+  const hasBusinessType = Boolean(profile.businessType && String(profile.businessType).trim() !== "" && String(profile.businessType).toUpperCase() !== "ALL");
+  const hasBusinessStatus = Boolean(profile.businessStatus && String(profile.businessStatus).trim() !== "" && String(profile.businessStatus).toUpperCase() !== "ALL");
+  const hasDisability = Boolean(profile.isDivyangjan || profile.hasDisability);
+  const hasSpecialStatus = Boolean(profile.isSafaiKaramchari || profile.isArtisan || profile.isTransgender || profile.isDnt || profile.isFarmer || profile.isStudent || profile.isSeniorCitizen);
+  const hasEducation = Boolean(profile.education && String(profile.education).trim() !== "");
+  const cleanReqStr = typeof profile.financialRequirement === "string" ? profile.financialRequirement.replace(/[₹\s,]|rs\.?|inr/gi, "") : profile.financialRequirement;
+  const hasFinancial = cleanReqStr !== "" && cleanReqStr !== null && cleanReqStr !== undefined && !isNaN(cleanReqStr) && Number(cleanReqStr) > 0;
+  const hasTaxPayer = profile.isTaxPayer !== undefined && profile.isTaxPayer !== null;
+  const hasBpl = profile.hasBplCard !== undefined && profile.hasBplCard !== null;
+
+  return !(
+    hasAge ||
+    hasIncome ||
+    hasState ||
+    hasCategory ||
+    hasGender ||
+    hasOccupation ||
+    hasBusinessType ||
+    hasBusinessStatus ||
+    hasDisability ||
+    hasSpecialStatus ||
+    hasEducation ||
+    hasFinancial ||
+    hasTaxPayer ||
+    hasBpl
+  );
+}
+
+/**
  * Evaluates a citizen profile against a single scheme with strict deterministic eligibility
- * and an independent explainable 0–100 relevance score.
+ * and an independent explainable 0–100 Match Rating with normalized weighted criteria.
  */
 export function scoreScheme(arg1 = {}, arg2 = {}) {
   // Gracefully handle both (profile, scheme) and (scheme, profile) signatures
@@ -374,15 +483,6 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   const failedCriteria = [];
   const missingInformation = [];
   const disqualifyingReasons = [];
-
-  const scoreBreakdown = {
-    categoryFit: 0,
-    incomeFit: 0,
-    ageFit: 0,
-    locationFit: 0,
-    occupationFit: 0,
-    financialFit: 0,
-  };
 
   const cached = getPrecomputedScheme(scheme);
   const {
@@ -422,28 +522,95 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   } = cached;
 
   // -------------------------------------------------------------------------
-  // 1. STATE / DOMICILE EVALUATION (Weight: 15)
+  // APPLICABILITY DETERMINATION & DYNAMIC WEIGHT NORMALIZATION
   // -------------------------------------------------------------------------
-  const hasStateSpecified = Boolean(profile.state && String(profile.state).trim() !== "");
+  // Check which criteria actually constrain/apply to this scheme:
+  const isIncomeApplicable = schemeIncomeLimit != null;
+  const isAgeApplicable = minAge > 0 || maxAge < 100;
+  const isLocationApplicable = true; // Geographic dimension always applies (Pan-India or state-specific)
+  const isCategoryApplicable = true; // Category dimension always applies (Open to all or affirmative action)
+  const isOccupationApplicable = !isPensionOrWelfare && !isBroadScheme;
+  const isFinancialApplicable = !isNonCreditScheme && !isPensionOrWelfare && (minReq > 0 || maxReq > 0);
 
-  if (isPanIndia) {
-    scoreBreakdown.locationFit = 15;
-    reasons.green.push("Pan-India scheme (applicable in all States & Union Territories)");
-    passedCriteria.push({
-      criterion: "state",
-      label: "Geographic Eligibility",
-      detail: "Pan-India central scheme: valid in all States & UTs",
-    });
+  const criteriaConfig = [
+    { id: "category", label: "Social Category & Target Beneficiary Group", baseWeight: 25, applicable: isCategoryApplicable },
+    { id: "income", label: "Annual Family Income Ceiling", baseWeight: 20, applicable: isIncomeApplicable },
+    { id: "age", label: "Age Bounds & Eligibility Bracket", baseWeight: 15, applicable: isAgeApplicable },
+    { id: "location", label: "Geographic Scope & Domicile", baseWeight: 15, applicable: isLocationApplicable },
+    { id: "occupation", label: "Occupation & Enterprise Alignment", baseWeight: 15, applicable: isOccupationApplicable },
+    { id: "financial", label: "Funding Requirement & Scale Fit", baseWeight: 10, applicable: isFinancialApplicable },
+  ];
+
+  const applicableCriteria = criteriaConfig.filter((c) => c.applicable);
+  const totalApplicableBase = applicableCriteria.reduce((sum, c) => sum + c.baseWeight, 0);
+  const scaleFactor = totalApplicableBase > 0 ? 100 / totalApplicableBase : 1;
+
+  // Calculate normalized weights (sum to 100 across applicable criteria)
+  const normalizedWeights = {};
+  for (const c of criteriaConfig) {
+    if (c.applicable) {
+      normalizedWeights[c.id] = Math.round(c.baseWeight * scaleFactor * 10) / 10;
+    } else {
+      normalizedWeights[c.id] = 0;
+    }
+  }
+
+  // Tracking points awarded per criterion (never award points for missing info!)
+  const criterionResults = {
+    category: { awarded: 0, status: isCategoryApplicable ? "missing" : "not_applicable", detail: "" },
+    income: { awarded: 0, status: isIncomeApplicable ? "missing" : "not_applicable", detail: "" },
+    age: { awarded: 0, status: isAgeApplicable ? "missing" : "not_applicable", detail: "" },
+    location: { awarded: 0, status: isLocationApplicable ? "missing" : "not_applicable", detail: "" },
+    occupation: { awarded: 0, status: isOccupationApplicable ? "missing" : "not_applicable", detail: "" },
+    financial: { awarded: 0, status: isFinancialApplicable ? "missing" : "not_applicable", detail: "" },
+  };
+
+  // -------------------------------------------------------------------------
+  // 1. STATE / DOMICILE EVALUATION (Normalized Weight: ~15-20)
+  // -------------------------------------------------------------------------
+  const hasStateSpecified = Boolean(profile.state && String(profile.state).trim() !== "" && String(profile.state).toUpperCase() !== "SELECT STATE / UT");
+
+  if (!isLocationApplicable || isPanIndia) {
+    if (hasStateSpecified) {
+      criterionResults.location = {
+        awarded: normalizedWeights.location || 15,
+        status: "passed",
+        detail: `Pan-India central scheme: valid in all States & UTs (Applicant: ${profile.state}) [+${normalizedWeights.location || 15} pts]`,
+      };
+      reasons.green.push(`Available in your state (${profile.state})`);
+      passedCriteria.push({
+        criterion: "state",
+        label: "Geographic Eligibility",
+        detail: `Pan-India central scheme: valid in all States & UTs (Applicant: ${profile.state})`,
+      });
+    } else {
+      // Pan-India scheme has no state restriction, so missing state is non-restricting
+      criterionResults.location = {
+        awarded: 0,
+        status: "not_applicable",
+        detail: "Pan-India central scheme: valid in all States & UTs without state domicile restriction",
+      };
+      reasons.green.push("Pan-India scheme (applicable in all States & Union Territories)");
+    }
   } else if (!hasStateSpecified) {
-    scoreBreakdown.locationFit = 7;
+    // Missing state on a state-restricted scheme: NEVER award points for missing info
+    criterionResults.location = {
+      awarded: 0,
+      status: "missing",
+      detail: `State of residence not specified in profile (Scheme restricted to: ${schemeStates.join(", ")}) [0/${normalizedWeights.location} pts]`,
+    };
     reasons.yellow.push(`State not specified in profile (Scheme restricted to: ${schemeStates.join(", ")})`);
     missingInformation.push({
       criterion: "state",
       label: "State Domicile",
       detail: `State of residence not specified in profile; scheme restricted to ${schemeStates.join(", ")}`,
     });
-  } else if (schemeStates.includes(profile.state)) {
-    scoreBreakdown.locationFit = 15;
+  } else if (schemeStates.includes(profile.state) || profile.state === "ALL") {
+    criterionResults.location = {
+      awarded: normalizedWeights.location,
+      status: "passed",
+      detail: `Applicant resides in designated eligible state (${profile.state}) [+${normalizedWeights.location} pts]`,
+    };
     reasons.green.push(`Available in your state (${profile.state})`);
     passedCriteria.push({
       criterion: "state",
@@ -452,7 +619,11 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
     });
   } else {
     // Hard deterministic failure
-    scoreBreakdown.locationFit = 0;
+    criterionResults.location = {
+      awarded: 0,
+      status: "failed",
+      detail: `Scheme restricted to ${schemeStates.join(", ")}; not active in ${profile.state} [0/${normalizedWeights.location} pts]`,
+    };
     const failReason = `Scheme restricted to ${schemeStates.join(", ")}; not active in ${profile.state}`;
     reasons.red.push(failReason);
     disqualifyingReasons.push(failReason);
@@ -464,21 +635,18 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   }
 
   // -------------------------------------------------------------------------
-  // 2. AGE ELIGIBILITY (Weight: 15)
+  // 2. AGE ELIGIBILITY (Normalized Weight: ~15-20 when applicable)
   // -------------------------------------------------------------------------
-  const hasAgeSpecified = profile.age != null && profile.age !== "" && !isNaN(profile.age);
+  const hasAgeSpecified = profile.age != null && profile.age !== "" && !isNaN(profile.age) && Number(profile.age) > 0;
 
-  if (!hasAgeSpecified) {
-    if (minAge > 0 || maxAge < 100) {
-      scoreBreakdown.ageFit = 7;
-      reasons.yellow.push(`Age eligibility range is ${minAge}–${maxAge} years (age not specified in profile)`);
-      missingInformation.push({
-        criterion: "age",
-        label: "Age Bounds",
-        detail: `Age not specified in profile; scheme requires ${minAge}–${maxAge} years`,
-      });
-    } else {
-      scoreBreakdown.ageFit = 15;
+  if (!isAgeApplicable) {
+    // Open to all age groups: non-restricting
+    criterionResults.age = {
+      awarded: 0,
+      status: "not_applicable",
+      detail: "Open to all age groups without statutory age restrictions (weight normalized)",
+    };
+    if (hasAgeSpecified) {
       reasons.green.push("Open to all age groups");
       passedCriteria.push({
         criterion: "age",
@@ -486,10 +654,27 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
         detail: "Open to all age groups",
       });
     }
+  } else if (!hasAgeSpecified) {
+    // Missing age: NEVER award points for missing information
+    criterionResults.age = {
+      awarded: 0,
+      status: "missing",
+      detail: `Age not specified in profile; scheme requires ${minAge}–${maxAge} years [0/${normalizedWeights.age} pts]`,
+    };
+    reasons.yellow.push(`Age eligibility range is ${minAge}–${maxAge} years (age not specified in profile)`);
+    missingInformation.push({
+      criterion: "age",
+      label: "Age Bounds",
+      detail: `Age not specified in profile; scheme requires ${minAge}–${maxAge} years`,
+    });
   } else {
     const ageNum = Number(profile.age);
     if (ageNum >= minAge && ageNum <= maxAge) {
-      scoreBreakdown.ageFit = 15;
+      criterionResults.age = {
+        awarded: normalizedWeights.age,
+        status: "passed",
+        detail: `Age (${profile.age} years) satisfies eligible bracket (${minAge}–${maxAge} years) [+${normalizedWeights.age} pts]`,
+      };
       reasons.green.push(`Age (${profile.age} years) is within eligible range (${minAge}–${maxAge} years)`);
       passedCriteria.push({
         criterion: "age",
@@ -498,7 +683,11 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
       });
     } else {
       // Hard deterministic failure
-      scoreBreakdown.ageFit = 0;
+      criterionResults.age = {
+        awarded: 0,
+        status: "failed",
+        detail: `Age (${profile.age}) is outside required bracket (${minAge}–${maxAge} years) [0/${normalizedWeights.age} pts]`,
+      };
       const failReason = `Age (${profile.age}) is outside required range (${minAge}–${maxAge} years)`;
       reasons.red.push(failReason);
       disqualifyingReasons.push(failReason);
@@ -511,20 +700,34 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   }
 
   // -------------------------------------------------------------------------
-  // 3. INCOME CEILING (Weight: 20)
+  // 3. INCOME CEILING (Normalized Weight: ~20-25 when applicable)
   // -------------------------------------------------------------------------
-  const hasIncomeSpecified = profile.income != null && profile.income !== "" && !isNaN(profile.income);
+  // Income can be 0 (valid for unemployed/destitute) or positive
+  const cleanIncStr = typeof profile.income === "string" ? profile.income.replace(/[₹\s,]|rs\.?|inr/gi, "") : profile.income;
+  const hasIncomeSpecified = cleanIncStr !== "" && cleanIncStr !== null && cleanIncStr !== undefined && !isNaN(cleanIncStr) && Number(cleanIncStr) >= 0;
 
-  if (schemeIncomeLimit == null) {
-    scoreBreakdown.incomeFit = 20;
-    reasons.green.push("No income ceiling for this scheme");
-    passedCriteria.push({
-      criterion: "income",
-      label: "Income Ceiling",
-      detail: "No statutory income ceiling applies to this scheme",
-    });
+  if (!isIncomeApplicable) {
+    // No income ceiling on this scheme
+    criterionResults.income = {
+      awarded: 0,
+      status: "not_applicable",
+      detail: "No statutory income ceiling applies to this scheme (weight normalized)",
+    };
+    if (hasIncomeSpecified) {
+      passedCriteria.push({
+        criterion: "income",
+        label: "Income Ceiling",
+        detail: "No statutory income ceiling applies to this scheme",
+      });
+      reasons.green.push("No income ceiling for this scheme");
+    }
   } else if (!hasIncomeSpecified) {
-    scoreBreakdown.incomeFit = 10;
+    // Missing income: NEVER award points for missing information
+    criterionResults.income = {
+      awarded: 0,
+      status: "missing",
+      detail: `Annual family income not declared; scheme has statutory ceiling of ₹${formatINR(schemeIncomeLimit)} [0/${normalizedWeights.income} pts]`,
+    };
     reasons.yellow.push(`Income ceiling of ₹${formatINR(schemeIncomeLimit)} applies; income not specified in profile`);
     missingInformation.push({
       criterion: "income",
@@ -532,19 +735,27 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
       detail: `Annual family income not specified; statutory ceiling of ₹${formatINR(schemeIncomeLimit)} applies`,
     });
   } else {
-    const incNum = Number(profile.income);
+    const incNum = Number(cleanIncStr);
     if (incNum <= schemeIncomeLimit) {
-      scoreBreakdown.incomeFit = 20;
-      reasons.green.push(`Annual income (₹${formatINR(profile.income)}) satisfies scheme ceiling (₹${formatINR(schemeIncomeLimit)})`);
+      criterionResults.income = {
+        awarded: normalizedWeights.income,
+        status: "passed",
+        detail: `Annual income (₹${formatINR(incNum)}) is within statutory ceiling (₹${formatINR(schemeIncomeLimit)}) [+${normalizedWeights.income} pts]`,
+      };
+      reasons.green.push(`Annual income (₹${formatINR(incNum)}) satisfies scheme ceiling (₹${formatINR(schemeIncomeLimit)})`);
       passedCriteria.push({
         criterion: "income",
         label: "Income Ceiling",
-        detail: `Annual family income (₹${formatINR(profile.income)}) is within statutory ceiling (₹${formatINR(schemeIncomeLimit)})`,
+        detail: `Annual family income (₹${formatINR(incNum)}) is within statutory ceiling (₹${formatINR(schemeIncomeLimit)})`,
       });
     } else {
       // Hard deterministic failure
-      scoreBreakdown.incomeFit = 0;
-      const failReason = `Income exceeds scheme's ceiling of ₹${formatINR(schemeIncomeLimit)} (Applicant: ₹${formatINR(profile.income)})`;
+      criterionResults.income = {
+        awarded: 0,
+        status: "failed",
+        detail: `Income exceeds scheme's ceiling of ₹${formatINR(schemeIncomeLimit)} (Applicant: ₹${formatINR(incNum)}) [0/${normalizedWeights.income} pts]`,
+      };
+      const failReason = `Income exceeds scheme's ceiling of ₹${formatINR(schemeIncomeLimit)} (Applicant: ₹${formatINR(incNum)})`;
       reasons.red.push(failReason);
       disqualifyingReasons.push(failReason);
       failedCriteria.push({
@@ -556,9 +767,9 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   }
 
   // -------------------------------------------------------------------------
-  // 4. SOCIAL CATEGORY & AFFIRMATIVE ACTION (Weight: 20)
+  // 4. SOCIAL CATEGORY & AFFIRMATIVE ACTION (Normalized Weight: ~25-35)
   // -------------------------------------------------------------------------
-  const hasCategorySpecified = Boolean(profile.category && String(profile.category).trim() !== "");
+  const hasCategorySpecified = Boolean(profile.category && String(profile.category).trim() !== "" && String(profile.category).toUpperCase() !== "SELECT");
 
   const isFemaleBeneficiary = profile.gender === "Female" && hasWomenKeywords;
 
@@ -588,7 +799,7 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   const isSeniorCitizenMatch =
     (Number(profile.age) >= 60 || Boolean(profile.isSeniorCitizen)) && hasSeniorKeywords;
 
-  const isChildrenMatch = Number(profile.age) < 18 && hasChildrenKeywords;
+  const isChildrenMatch = Number(profile.age) > 0 && Number(profile.age) < 18 && hasChildrenKeywords;
 
   const isSpecialTargetMatch =
     isSafaiKaramchariMatch ||
@@ -612,30 +823,26 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
       (profile.category === "EWS" && (schemeCategories.includes("EWS") || schemeCategories.includes("General"))));
 
   if (isSpecialTargetMatch) {
-    scoreBreakdown.categoryFit = 20;
+    criterionResults.category = {
+      awarded: normalizedWeights.category || 25,
+      status: "passed",
+      detail: `Target demographic priority group satisfied (${schemeCategories.join(" / ")}) [+${normalizedWeights.category || 25} pts]`,
+    };
     if (isSafaiKaramchariMatch) {
-      scoreBreakdown.categoryFit += 5;
       reasons.green.push("★ Priority Beneficiary: Designated scheme for Sanitation Workers / Safai Karamcharis (NSKFDC/NAMASTE)");
     } else if (isDivyangjanMatch) {
-      scoreBreakdown.categoryFit += 5;
       reasons.green.push("★ Priority Beneficiary: Designated scheme for Persons with Disabilities / Divyangjan (DEPwD/NHFDC)");
     } else if (isArtisanMatch) {
-      scoreBreakdown.categoryFit += 5;
       reasons.green.push("★ Priority Beneficiary: Targeted support for Traditional Artisans & Craftspeople (PM Vishwakarma)");
     } else if (isStudentMatch) {
-      scoreBreakdown.categoryFit += 4;
       reasons.green.push("★ Direct Student Match: Official educational scholarship / fellowship program");
     } else if (isFarmerMatch) {
-      scoreBreakdown.categoryFit += 4;
       reasons.green.push("★ Direct Agri Match: Designated scheme for Farmers & Rural Producers");
     } else if (isMinorityMatch) {
-      scoreBreakdown.categoryFit += 5;
       reasons.green.push("★ Priority Beneficiary: Designated scheme for Notified Minority Communities (NMDFC)");
     } else if (isTransgenderMatch) {
-      scoreBreakdown.categoryFit += 5;
       reasons.green.push("★ Priority Beneficiary: Dedicated livelihood support for Transgender Persons (SMILE)");
     } else if (isDntMatch) {
-      scoreBreakdown.categoryFit += 5;
       reasons.green.push("★ Priority Beneficiary: Targeted support for De-Notified / Nomadic Tribes (SEED)");
     } else if (isSeniorCitizenMatch) {
       reasons.green.push("Designated social security welfare for Senior Citizens");
@@ -648,7 +855,11 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
       detail: `Target demographic group satisfied (${schemeCategories.join(" / ")})`,
     });
   } else if (isFemaleBeneficiary) {
-    scoreBreakdown.categoryFit = 20;
+    criterionResults.category = {
+      awarded: normalizedWeights.category || 25,
+      status: "passed",
+      detail: `Eligible under designated Women Entrepreneur / Welfare provisions [+${normalizedWeights.category || 25} pts]`,
+    };
     reasons.green.push("Eligible under special Women Entrepreneur / Welfare provision");
     passedCriteria.push({
       criterion: "category",
@@ -656,7 +867,11 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
       detail: "Eligible under special Women Entrepreneur / Welfare provision",
     });
   } else if (isExactCategoryMatch) {
-    scoreBreakdown.categoryFit = 20;
+    criterionResults.category = {
+      awarded: normalizedWeights.category || 25,
+      status: "passed",
+      detail: `Category requirement satisfied (${profile.category}) [+${normalizedWeights.category || 25} pts]`,
+    };
     reasons.green.push(`Social category requirement satisfied (${profile.category})`);
     passedCriteria.push({
       criterion: "category",
@@ -664,15 +879,34 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
       detail: `Category requirement satisfied (${profile.category})`,
     });
   } else if (isCategoryOpen) {
-    scoreBreakdown.categoryFit = 20;
-    reasons.green.push("Category requirement satisfied (Open to all social groups)");
-    passedCriteria.push({
-      criterion: "category",
-      label: "Social Category",
-      detail: "Open to all social groups without community restriction",
-    });
+    if (hasCategorySpecified) {
+      criterionResults.category = {
+        awarded: normalizedWeights.category || 25,
+        status: "passed",
+        detail: `Open to all social groups without community restriction [+${normalizedWeights.category || 25} pts]`,
+      };
+      reasons.green.push("Category requirement satisfied (Open to all social groups)");
+      passedCriteria.push({
+        criterion: "category",
+        label: "Social Category",
+        detail: "Open to all social groups without community restriction",
+      });
+    } else {
+      // Open category scheme has no community restriction, so missing category is non-restricting
+      criterionResults.category = {
+        awarded: 0,
+        status: "not_applicable",
+        detail: "Open to all social groups without community restriction",
+      };
+      reasons.green.push("Open to all social groups");
+    }
   } else if (!hasCategorySpecified) {
-    scoreBreakdown.categoryFit = 10;
+    // Missing category in profile on a CATEGORY-RESTRICTED scheme: NEVER award points
+    criterionResults.category = {
+      awarded: 0,
+      status: "missing",
+      detail: `Social category not declared in profile (Scheme targets: ${schemeCategories.join(" / ")}) [0/${normalizedWeights.category} pts]`,
+    };
     reasons.yellow.push(`Category not specified in profile (Scheme targets: ${schemeCategories.join(" / ")})`);
     missingInformation.push({
       criterion: "category",
@@ -681,7 +915,11 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
     });
   } else {
     // Category mismatch
-    scoreBreakdown.categoryFit = 0;
+    criterionResults.category = {
+      awarded: 0,
+      status: "failed",
+      detail: `Scheme specifically targets ${schemeCategories.join(" / ")} applicants [0/${normalizedWeights.category} pts]`,
+    };
     const failReason = `Scheme specifically targets ${schemeCategories.join(" / ")} applicants`;
     reasons.red.push(failReason);
     disqualifyingReasons.push(failReason);
@@ -693,22 +931,27 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   }
 
   // -------------------------------------------------------------------------
-  // 5. OCCUPATION & ENTERPRISE PROFILE (Weight: 15)
+  // 5. OCCUPATION & ENTERPRISE PROFILE (Normalized Weight: ~15-20 when applicable)
   // -------------------------------------------------------------------------
-  if (isBroadScheme || isPensionOrWelfare) {
-    scoreBreakdown.occupationFit = 15;
-    reasons.green.push("Open to all occupations, individual citizens, and enterprise stages");
+  if (!isOccupationApplicable) {
+    criterionResults.occupation = {
+      awarded: 0,
+      status: "not_applicable",
+      detail: "Universal civic welfare / pension / non-commercial grant (weight normalized)",
+    };
     passedCriteria.push({
       criterion: "occupation",
       label: "Occupation / Enterprise Stage",
       detail: "Open to all occupations, citizens, and enterprise stages",
     });
+    reasons.green.push("Open to all occupations, individual citizens, and enterprise stages");
   } else {
     const hasOccupationSpecified = Boolean(profile.occupation && String(profile.occupation).trim() !== "");
     const hasTypeSpecified = Boolean(profile.businessType && profile.businessType !== "");
     const hasStatusSpecified = Boolean(profile.businessStatus && profile.businessStatus !== "");
+    const hasAnyWorkSpecified = hasOccupationSpecified || hasTypeSpecified || hasStatusSpecified;
 
-    // Check specific beneficiary alignment (Artisan, Safai Karamchari, Farmer, Student)
+    // Check specific beneficiary alignment (Artisan, Safai Karamchari, Farmer, Student, Vendor)
     const isTargetArtisan = hasArtisanKeywords && (profile.isArtisan || (hasOccupationSpecified && profile.occupation.toLowerCase().includes("artisan")));
     const isTargetSafai = hasSafaiKeywords && (profile.isSafaiKaramchari || (hasOccupationSpecified && profile.occupation.toLowerCase().includes("sanitation")));
     const isTargetFarmer = hasFarmerKeywords && (hasOccupationSpecified && profile.occupation.toLowerCase().includes("farmer"));
@@ -716,7 +959,11 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
     const isTargetVendor = (schemeText.includes("vendor") || schemeText.includes("street")) && (hasOccupationSpecified && profile.occupation.toLowerCase().includes("vendor"));
 
     if (isTargetArtisan || isTargetSafai || isTargetFarmer || isTargetStudent || isTargetVendor) {
-      scoreBreakdown.occupationFit = 15;
+      criterionResults.occupation = {
+        awarded: normalizedWeights.occupation,
+        status: "passed",
+        detail: `Applicant aligns with designated target trade/livelihood [+${normalizedWeights.occupation} pts]`,
+      };
       const targetLabel = isTargetArtisan ? "Artisan / Craftsman" : isTargetSafai ? "Sanitation Worker" : isTargetFarmer ? "Farmer" : isTargetStudent ? "Student" : "Street Vendor";
       reasons.green.push(`Eligible target group satisfied (${targetLabel})`);
       passedCriteria.push({
@@ -724,12 +971,56 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
         label: "Occupation / Beneficiary Category",
         detail: `Applicant aligns with designated target group (${targetLabel})`,
       });
+    } else if (isBroadScheme) {
+      if (hasAnyWorkSpecified) {
+        criterionResults.occupation = {
+          awarded: normalizedWeights.occupation,
+          status: "passed",
+          detail: `Broad enterprise scope: compatible with applicant's declared profile [+${normalizedWeights.occupation} pts]`,
+        };
+        reasons.green.push("Open to all enterprise sectors and stages");
+        passedCriteria.push({
+          criterion: "occupation",
+          label: "Enterprise Alignment",
+          detail: "Open to all commercial sectors and venture stages",
+        });
+      } else {
+        // Missing work profile: NEVER award points for missing info
+        criterionResults.occupation = {
+          awarded: 0,
+          status: "missing",
+          detail: `Occupation / business details not specified in profile [0/${normalizedWeights.occupation} pts]`,
+        };
+        reasons.yellow.push("Occupation / business stage not specified in profile");
+        missingInformation.push({
+          criterion: "occupation",
+          label: "Enterprise Profile",
+          detail: "Occupation / business stage not specified in profile",
+        });
+      }
+    } else if (!hasAnyWorkSpecified) {
+      // Missing work info
+      criterionResults.occupation = {
+        awarded: 0,
+        status: "missing",
+        detail: `Occupation or business details not specified in profile [0/${normalizedWeights.occupation} pts]`,
+      };
+      reasons.yellow.push("Occupation / business stage not specified in profile");
+      missingInformation.push({
+        criterion: "occupation",
+        label: "Occupation / Sector",
+        detail: "Occupation / business stage not specified in profile",
+      });
     } else {
       const typeMatch = schemeBTypes.includes("ALL") || schemeBTypes.includes("any") || (hasTypeSpecified && schemeBTypes.includes(profile.businessType)) || (!hasTypeSpecified && hasOccupationSpecified);
       const statusMatch = schemeBStatus.includes("ALL") || schemeBStatus.includes("any") || (hasStatusSpecified && schemeBStatus.includes(profile.businessStatus)) || (!hasStatusSpecified && hasOccupationSpecified);
 
       if (typeMatch && statusMatch) {
-        scoreBreakdown.occupationFit = 15;
+        criterionResults.occupation = {
+          awarded: normalizedWeights.occupation,
+          status: "passed",
+          detail: `Sector (${profile.businessType || profile.occupation || "General"}) & stage supported [+${normalizedWeights.occupation} pts]`,
+        };
         reasons.green.push(`Business model (${profile.businessType || profile.occupation || "General"}) & stage supported`);
         passedCriteria.push({
           criterion: "occupation",
@@ -737,7 +1028,12 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
           detail: `Sector (${profile.businessType || profile.occupation || "General"}) & enterprise stage supported`,
         });
       } else if (typeMatch || statusMatch) {
-        scoreBreakdown.occupationFit = 8;
+        const partialPts = Math.round(normalizedWeights.occupation * 0.5 * 10) / 10;
+        criterionResults.occupation = {
+          awarded: partialPts,
+          status: "partial",
+          detail: `Partial alignment: ${typeMatch ? "Sector matches" : "Stage matches"} [+${partialPts}/${normalizedWeights.occupation} pts]`,
+        };
         if (!typeMatch) {
           reasons.yellow.push(`Scheme covers ${schemeBTypes.join(" / ")} activities`);
           missingInformation.push({
@@ -753,16 +1049,12 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
             detail: `Scheme targets ${schemeBStatus.join(" / ")} stage enterprises`,
           });
         }
-      } else if (!hasTypeSpecified && !hasStatusSpecified && !hasOccupationSpecified) {
-        scoreBreakdown.occupationFit = 7;
-        reasons.yellow.push(`Occupation / business stage not specified in profile`);
-        missingInformation.push({
-          criterion: "occupation",
-          label: "Occupation / Sector",
-          detail: `Occupation / business stage not specified in profile`,
-        });
       } else {
-        scoreBreakdown.occupationFit = 0;
+        criterionResults.occupation = {
+          awarded: 0,
+          status: "failed",
+          detail: `Applicant activity does not match target enterprise profile [0/${normalizedWeights.occupation} pts]`,
+        };
         const failReason = "Applicant activity does not match target enterprise profile";
         reasons.red.push(failReason);
         disqualifyingReasons.push(failReason);
@@ -814,23 +1106,31 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   }
 
   // -------------------------------------------------------------------------
-  // 7. FINANCIAL REQUIREMENT / ASSISTANCE (Weight: 15)
+  // 7. FINANCIAL REQUIREMENT / ASSISTANCE (Normalized Weight: ~10-15 when applicable)
   // -------------------------------------------------------------------------
-  const hasReqSpecified =
-    profile.financialRequirement != null &&
-    profile.financialRequirement !== "" &&
-    !isNaN(profile.financialRequirement);
+  const cleanReqStr = typeof profile.financialRequirement === "string" ? profile.financialRequirement.replace(/[₹\s,]|rs\.?|inr/gi, "") : profile.financialRequirement;
+  const hasReqSpecified = cleanReqStr !== "" && cleanReqStr !== null && cleanReqStr !== undefined && !isNaN(cleanReqStr) && Number(cleanReqStr) >= 0;
 
-  if (isNonCreditScheme || isPensionOrWelfare) {
-    scoreBreakdown.financialFit = 15;
-    reasons.green.push("Direct financial welfare / pension / scholarship / social assistance grant");
+  if (!isFinancialApplicable) {
+    // Direct non-credit grant or pension: weight is normalized
+    criterionResults.financial = {
+      awarded: 0,
+      status: "not_applicable",
+      detail: "Direct non-credit social grant / pension / welfare subsidy (weight normalized)",
+    };
     passedCriteria.push({
       criterion: "financialRequirement",
       label: "Financial Assistance",
       detail: "Direct non-credit social welfare / pension / grant",
     });
+    reasons.green.push("Direct financial welfare / pension / scholarship / social assistance grant");
   } else if (!hasReqSpecified) {
-    scoreBreakdown.financialFit = 7;
+    // Missing financial req: NEVER award points for missing info
+    criterionResults.financial = {
+      awarded: 0,
+      status: "missing",
+      detail: `Funding requirement not specified in profile (Scheme assistance: ₹${formatINR(minReq)}–₹${formatINR(maxReq)}) [0/${normalizedWeights.financial} pts]`,
+    };
     reasons.yellow.push(`Funding requirement not specified (Scheme assistance: ₹${formatINR(minReq)}–₹${formatINR(maxReq)})`);
     missingInformation.push({
       criterion: "financialRequirement",
@@ -838,9 +1138,13 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
       detail: `Funding requirement not specified (Scheme assistance: ₹${formatINR(minReq)}–₹${formatINR(maxReq)})`,
     });
   } else {
-    const req = Number(profile.financialRequirement);
+    const req = Number(cleanReqStr);
     if (req >= minReq && (maxReq === 0 || req <= maxReq)) {
-      scoreBreakdown.financialFit = 15;
+      criterionResults.financial = {
+        awarded: normalizedWeights.financial,
+        status: "passed",
+        detail: `Requested amount (₹${formatINR(req)}) fits scheme bracket (₹${formatINR(minReq)}–₹${formatINR(maxReq)}) [+${normalizedWeights.financial} pts]`,
+      };
       reasons.green.push(`Funding requirement (₹${formatINR(req)}) falls within scheme assistance bracket`);
       passedCriteria.push({
         criterion: "financialRequirement",
@@ -848,18 +1152,27 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
         detail: `Requested amount (₹${formatINR(req)}) matches scheme bracket (₹${formatINR(minReq)}–₹${formatINR(maxReq)})`,
       });
     } else if (req < minReq) {
-      scoreBreakdown.financialFit = 6;
+      const partialPts = Math.round(normalizedWeights.financial * 0.5 * 10) / 10;
+      criterionResults.financial = {
+        awarded: partialPts,
+        status: "partial",
+        detail: `Requested funding (₹${formatINR(req)}) is below scheme standard baseline (₹${formatINR(minReq)}) [+${partialPts}/${normalizedWeights.financial} pts]`,
+      };
       reasons.yellow.push(`Requested funding is below scheme baseline (₹${formatINR(minReq)}–₹${formatINR(maxReq)})`);
     } else {
-      scoreBreakdown.financialFit = 4;
+      const partialPts = Math.round(normalizedWeights.financial * 0.3 * 10) / 10;
+      criterionResults.financial = {
+        awarded: partialPts,
+        status: "partial",
+        detail: `Requested funding (₹${formatINR(req)}) exceeds scheme standard ceiling (₹${formatINR(maxReq)}) [+${partialPts}/${normalizedWeights.financial} pts]`,
+      };
       reasons.yellow.push(`Requested funding exceeds scheme standard ceiling (Maximum: ₹${formatINR(maxReq)})`);
     }
   }
 
   // -------------------------------------------------------------------------
-  // 8. SCHEME-SPECIFIC & STATUTORY DISCREPANCY CHECKS
+  // 8. SCHEME-SPECIFIC STATUTORY DISCREPANCY CHECKS (APY Tax, BPL)
   // -------------------------------------------------------------------------
-  // Taxpayer statutory exclusion check
   if (isTaxExclusionScheme) {
     if (profile.isTaxPayer === true) {
       const failReason = "Statutory guidelines explicitly exclude income-tax payees from this welfare scheme";
@@ -885,7 +1198,6 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
     }
   }
 
-  // BPL / Antyodaya ration card check
   if (isBplScheme) {
     if (profile.isBpl === true || profile.hasBplCard === true) {
       passedCriteria.push({
@@ -907,6 +1219,106 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
   reasons.yellow.push("Final benefit release subject to departmental guidelines and documentary scrutiny");
 
   // -------------------------------------------------------------------------
+  // 10. SCORE COVERAGE & DETAILED EXPLANATION GENERATION
+  // -------------------------------------------------------------------------
+  let evaluatedCount = 0;
+  const scoreExplanation = [];
+
+  for (const c of criteriaConfig) {
+    if (!c.applicable) {
+      scoreExplanation.push({
+        criterion: c.id,
+        label: c.label,
+        applicable: false,
+        baseWeight: c.baseWeight,
+        normalizedWeight: 0,
+        awardedPoints: 0,
+        status: "not_applicable",
+        detail: "Criterion does not restrict this scheme (weight normalized across active criteria)",
+      });
+      continue;
+    }
+
+    const cr = criterionResults[c.id];
+    if (cr && cr.status !== "missing" && cr.status !== "unknown") {
+      evaluatedCount++;
+    }
+
+    scoreExplanation.push({
+      criterion: c.id,
+      label: c.label,
+      applicable: true,
+      baseWeight: c.baseWeight,
+      normalizedWeight: normalizedWeights[c.id],
+      awardedPoints: cr ? cr.awarded : 0,
+      status: cr ? cr.status : "missing",
+      detail: cr ? cr.detail : "",
+    });
+  }
+
+  const applicableCount = applicableCriteria.length;
+
+  // -------------------------------------------------------------------------
+  // 10A. UNASSESSED PROFILE HANDLING (ZERO EVALUATED CRITERIA)
+  // -------------------------------------------------------------------------
+  if (isProfileEmpty(profile) || evaluatedCount === 0) {
+    return {
+      matchRating: null,
+      score: null,
+      ratingLabel: "Not Assessed",
+      scoreCoverage: "Not Assessed (0 criteria evaluated)",
+      coveragePercent: 0,
+      scoreExplanation,
+      scoreBreakdown: {
+        categoryFit: 0,
+        incomeFit: 0,
+        ageFit: 0,
+        locationFit: 0,
+        occupationFit: 0,
+        financialFit: 0,
+      },
+      eligibilityStatus: "Not Assessed",
+      isEligible: false,
+      isPotentiallyEligible: false,
+      isNotEligible: false,
+      isNotAssessed: true,
+      isAssessed: false,
+      eligible: false,
+      passedCriteria: [],
+      failedCriteria: [],
+      missingInformation: missingInformation.length > 0 ? missingInformation : [
+        {
+          criterion: "profile",
+          label: "Citizen Profile Required",
+          detail: "Demographic and economic profile required to evaluate eligibility criteria",
+        },
+      ],
+      disqualifyingReasons: [],
+      reasons: {
+        green: [],
+        yellow: ["Profile information required to assess eligibility"],
+        red: [],
+      },
+      passedCount: 0,
+      failedCount: 0,
+      unknownCount: missingInformation.length,
+      evaluatedCount: 0,
+      applicableCount,
+      criteriaSummary: {
+        passed: 0,
+        failed: 0,
+        unknown: missingInformation.length,
+        total: applicableCount,
+      },
+      criteriaAudit: {
+        status: isRequiresVerification ? "requires_verification" : "verified",
+        completeness: isRequiresVerification ? "requires_offline_verification" : "complete",
+        notes: schemeNotes.length > 0 ? schemeNotes : ["All mandatory criteria verified and deterministically codified"],
+      },
+    };
+  }
+
+  // -------------------------------------------------------------------------
   // 9. CANONICAL ELIGIBILITY STATUS ASSIGNMENT (STRICT DETERMINISTIC)
   // -------------------------------------------------------------------------
   let eligibilityStatus = "Eligible";
@@ -918,30 +1330,54 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
     eligibilityStatus = "Eligible";
   }
 
-  // Compute 0–100 relevance score
-  const rawScore =
-    scoreBreakdown.categoryFit +
-    scoreBreakdown.incomeFit +
-    scoreBreakdown.ageFit +
-    scoreBreakdown.locationFit +
-    scoreBreakdown.occupationFit +
-    scoreBreakdown.financialFit;
+  const coveragePercent = applicableCount > 0 ? Math.round((evaluatedCount / applicableCount) * 100) : 100;
+  const scoreCoverage = `${coveragePercent}% (${evaluatedCount} of ${applicableCount} criteria evaluated)`;
 
-  const finalScore = Math.min(100, Math.max(0, Math.round(rawScore)));
+  // -------------------------------------------------------------------------
+  // 11. MATCH RATING (0–100) & RATING LABEL COMPUTATION
+  // -------------------------------------------------------------------------
+  const rawSum = Object.values(criterionResults).reduce((sum, cr) => sum + (cr.awarded || 0), 0);
+  const matchRating = Math.min(100, Math.max(0, Math.round(rawSum)));
+  const ratingLabel = getRatingLabel(matchRating);
 
   return {
-    score: finalScore,
-    scoreBreakdown,
+    matchRating,
+    score: matchRating, // Backward compatibility with existing API consumers
+    ratingLabel,
+    scoreCoverage,
+    coveragePercent,
+    scoreExplanation,
+    scoreBreakdown: {
+      categoryFit: criterionResults.category?.awarded || 0,
+      incomeFit: criterionResults.income?.awarded || 0,
+      ageFit: criterionResults.age?.awarded || 0,
+      locationFit: criterionResults.location?.awarded || 0,
+      occupationFit: criterionResults.occupation?.awarded || 0,
+      financialFit: criterionResults.financial?.awarded || 0,
+    },
     eligibilityStatus,
     isEligible: eligibilityStatus === "Eligible",
     isPotentiallyEligible: eligibilityStatus === "Potentially Eligible",
     isNotEligible: eligibilityStatus === "Not Eligible",
+    isNotAssessed: false,
+    isAssessed: true,
     passedCriteria,
     failedCriteria,
     missingInformation,
     disqualifyingReasons,
     reasons,
     eligible: eligibilityStatus === "Eligible",
+    passedCount: passedCriteria.length,
+    failedCount: failedCriteria.length,
+    unknownCount: missingInformation.length,
+    evaluatedCount,
+    applicableCount,
+    criteriaSummary: {
+      passed: passedCriteria.length,
+      failed: failedCriteria.length,
+      unknown: missingInformation.length,
+      total: applicableCount,
+    },
     criteriaAudit: {
       status: isRequiresVerification ? "requires_verification" : "verified",
       completeness: isRequiresVerification ? "requires_offline_verification" : "complete",
@@ -951,7 +1387,7 @@ export function scoreScheme(arg1 = {}, arg2 = {}) {
 }
 
 /**
- * Matches and ranks schemes across the full dataset.
+ * Matches and ranks schemes across the full dataset using the unified Match Rating engine.
  */
 export function matchSchemes(profile = {}, schemeList = SCHEMES) {
   const len = schemeList.length;
@@ -963,5 +1399,10 @@ export function matchSchemes(profile = {}, schemeList = SCHEMES) {
       ...scoreScheme(profile, scheme),
     };
   }
-  return results.sort((a, b) => b.score - a.score);
+  return results.sort((a, b) => {
+    if (a.isAssessed === false && b.isAssessed === false) return 0;
+    if (a.isAssessed === false) return 1;
+    if (b.isAssessed === false) return -1;
+    return (b.matchRating ?? b.score ?? -1) - (a.matchRating ?? a.score ?? -1);
+  });
 }

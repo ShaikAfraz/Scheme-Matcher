@@ -24,6 +24,7 @@ import {
   ChevronsRight,
   HelpCircle,
   Filter,
+  UserCheck,
 } from "lucide-react";
 import ScoreBadge from "../components/ScoreBadge.jsx";
 import VoiceReader from "../components/VoiceReader.jsx";
@@ -61,6 +62,7 @@ export default function Results({
   currentUser = null,
   bookmarks = [],
   onToggleBookmark = null,
+  hasCompletedProfile = false,
 }) {
   const [statusFilter, setStatusFilter] = useState("all"); // "all" | "eligible" | "potentially_eligible" | "not_eligible" | "bookmarked"
   const [expandedCriteria, setExpandedCriteria] = useState({});
@@ -82,19 +84,32 @@ export default function Results({
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
+  const isProfileProvided = useMemo(() => {
+    return Boolean(
+      hasCompletedProfile ||
+      (matches && matches.some((m) => m.isAssessed !== false && m.matchRating !== null))
+    );
+  }, [hasCompletedProfile, matches]);
+
   // Dynamic counts for canonical eligibility statuses
   const statusCounts = useMemo(() => {
     let eligible = 0;
     let potentiallyEligible = 0;
     let notEligible = 0;
+    let notAssessed = 0;
     let bookmarkedCount = 0;
     for (const m of matches) {
-      const status =
-        m.eligibilityStatus ||
-        (m.isEligible ? "Eligible" : m.isNotEligible ? "Not Eligible" : "Potentially Eligible");
-      if (status === "Eligible") eligible++;
-      else if (status === "Potentially Eligible") potentiallyEligible++;
-      else notEligible++;
+      if (m.isAssessed === false || m.eligibilityStatus === "Not Assessed" || !isProfileProvided) {
+        notAssessed++;
+      } else {
+        const status =
+          m.eligibilityStatus ||
+          (m.isEligible ? "Eligible" : m.isNotEligible ? "Not Eligible" : "Potentially Eligible");
+        if (status === "Eligible") eligible++;
+        else if (status === "Potentially Eligible") potentiallyEligible++;
+        else if (status === "Not Eligible") notEligible++;
+        else notAssessed++;
+      }
 
       if ((bookmarks || []).some((b) => (b.scheme?.id || b.schemeId) === m.scheme.id)) {
         bookmarkedCount++;
@@ -105,9 +120,10 @@ export default function Results({
       eligible,
       potentiallyEligible,
       notEligible,
+      notAssessed,
       bookmarked: bookmarkedCount,
     };
-  }, [matches, bookmarks]);
+  }, [matches, bookmarks, isProfileProvided]);
 
   // Collect unique states from all matched schemes for dropdown
   const availableStates = useMemo(() => {
@@ -137,15 +153,20 @@ export default function Results({
   }, [matches]);
 
   const tierCounts = useMemo(() => {
-    let high = 0;
+    let excellent = 0;
+    let strong = 0;
     let moderate = 0;
-    let gap = 0;
+    let low = 0;
+    let weak = 0;
     for (const m of matches) {
-      if (m.score >= 70) high++;
-      else if (m.score >= 40) moderate++;
-      else gap++;
+      const s = m.matchRating ?? m.score ?? 0;
+      if (s >= 85) excellent++;
+      else if (s >= 70) strong++;
+      else if (s >= 50) moderate++;
+      else if (s >= 25) low++;
+      else if (s >= 1) weak++;
     }
-    return { high, moderate, gap, all: matches.length };
+    return { excellent, strong, moderate, low, weak, all: matches.length };
   }, [matches]);
 
   // Reset page when filters change
@@ -183,20 +204,33 @@ export default function Results({
     let result = [...matches];
 
     // Canonical Eligibility Status filter
-    if (statusFilter === "eligible") {
+    if (statusFilter === "not_assessed") {
+      result = result.filter(
+        (m) => !isProfileProvided || m.isAssessed === false || m.eligibilityStatus === "Not Assessed"
+      );
+    } else if (statusFilter === "eligible") {
       result = result.filter(
         (m) =>
+          isProfileProvided &&
+          m.isAssessed !== false &&
+          m.eligibilityStatus !== "Not Assessed" &&
           (m.eligibilityStatus || (m.isEligible ? "Eligible" : "Potentially Eligible")) === "Eligible"
       );
     } else if (statusFilter === "potentially_eligible") {
       result = result.filter(
         (m) =>
+          isProfileProvided &&
+          m.isAssessed !== false &&
+          m.eligibilityStatus !== "Not Assessed" &&
           (m.eligibilityStatus || (m.isPotentiallyEligible ? "Potentially Eligible" : "Eligible")) ===
           "Potentially Eligible"
       );
     } else if (statusFilter === "not_eligible") {
       result = result.filter(
         (m) =>
+          isProfileProvided &&
+          m.isAssessed !== false &&
+          m.eligibilityStatus !== "Not Assessed" &&
           (m.eligibilityStatus || (m.isNotEligible ? "Not Eligible" : "Potentially Eligible")) ===
           "Not Eligible"
       );
@@ -220,13 +254,29 @@ export default function Results({
       );
     }
 
-    // Match tier filter
-    if (tierFilter === "high") {
-      result = result.filter((m) => m.score >= 70);
+    // Match tier filter (85-100: Excellent, 70-84: Strong, 50-69: Moderate, 25-49: Low, 1-24: Weak)
+    if (tierFilter === "excellent") {
+      result = result.filter((m) => (m.matchRating ?? m.score) >= 85);
+    } else if (tierFilter === "strong") {
+      result = result.filter((m) => {
+        const s = m.matchRating ?? m.score;
+        return s >= 70 && s <= 84;
+      });
     } else if (tierFilter === "moderate") {
-      result = result.filter((m) => m.score >= 40 && m.score < 70);
-    } else if (tierFilter === "gap") {
-      result = result.filter((m) => m.score < 40);
+      result = result.filter((m) => {
+        const s = m.matchRating ?? m.score;
+        return s >= 50 && s <= 69;
+      });
+    } else if (tierFilter === "low") {
+      result = result.filter((m) => {
+        const s = m.matchRating ?? m.score;
+        return s >= 25 && s <= 49;
+      });
+    } else if (tierFilter === "weak") {
+      result = result.filter((m) => {
+        const s = m.matchRating ?? m.score;
+        return s >= 1 && s <= 24;
+      });
     }
 
     // Government Level filter
@@ -262,7 +312,9 @@ export default function Results({
     // Sorting
     result.sort((a, b) => {
       if (sortBy === "score-desc") {
-        return b.score - a.score;
+        const sA = a.matchRating ?? a.score ?? 0;
+        const sB = b.matchRating ?? b.score ?? 0;
+        return sB - sA;
       }
       if (sortBy === "funding-desc") {
         const reqA = a.scheme.maxReq || 0;
@@ -291,8 +343,8 @@ export default function Results({
 
   const speechSummary = topMatch
     ? lang === "hi"
-      ? `आपके लिए सबसे उपयुक्त योजना है: ${topMatch.scheme.name}। आपका पात्रता स्कोर ${topMatch.score} प्रतिशत है।`
-      : `Your top recommended scheme is ${topMatch.scheme.name} with an algorithmic compatibility score of ${topMatch.score} percent.`
+      ? `आपके लिए सबसे उपयुक्त योजना है: ${topMatch.scheme.name}। आपका मैच रेटिंग ${topMatch.matchRating ?? topMatch.score}/100 (${topMatch.ratingLabel || "Strong Match"}) है।`
+      : `Your top recommended scheme is ${topMatch.scheme.name} with an algorithmic match rating of ${topMatch.matchRating ?? topMatch.score}/100 (${topMatch.ratingLabel || "Strong Match"}).`
     : "";
 
   const goToPage = (p) => {
@@ -337,7 +389,7 @@ export default function Results({
             }}
           >
             <Compass size={14} />
-            <span>Curated Civic Ledger</span>
+            <span>{t.curatedCivicLedger || "Curated Civic Ledger"}</span>
           </div>
           <h1
             style={{
@@ -349,7 +401,7 @@ export default function Results({
               lineHeight: 1.2,
             }}
           >
-            Government Scheme Directory
+            {t.resultsTitle || "Government Scheme Directory"}
           </h1>
           <p
             style={{
@@ -360,8 +412,7 @@ export default function Results({
               margin: 0,
             }}
           >
-            {matches.length} audited central and state programs evaluated via deterministic rule matching. Showing{" "}
-            <strong style={{ color: INK }}>{filteredMatches.length}</strong> of {matches.length} schemes.
+            {t.resultsSubtitle || `${matches.length} audited central and state programs evaluated via deterministic rule matching.`}
           </p>
         </div>
 
@@ -390,7 +441,7 @@ export default function Results({
               }}
             >
               <Printer size={14} color={SEAL} />
-              <span>Print Dossier Summary</span>
+              <span>{t.cscSlipBtn || "Print Dossier Summary"}</span>
             </button>
           )}
 
@@ -414,16 +465,108 @@ export default function Results({
               }}
             >
               <SlidersHorizontal size={14} color={SEAL} />
-              <span>Adjust Profile</span>
+              <span>{t.retakeProfile || "Adjust Profile"}</span>
             </button>
           )}
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. TOP MATCH EDITORIAL SPOTLIGHT (IF MATCH SCORE >= 50)                   */}
+      {/* 2. PROFILE REQUIRED CALLOUT (WHEN UNASSESSED) OR TOP MATCH SPOTLIGHT       */}
       {/* ========================================================================= */}
-      {topMatch && topMatch.score >= 50 && (
+      {!isProfileProvided ? (
+        <div
+          style={{
+            background: "#F8FAFC",
+            border: `1.5px solid #CBD5E1`,
+            borderLeft: `5px solid #1D4ED8`,
+            borderRadius: 6,
+            padding: "24px 28px",
+            marginBottom: 32,
+            boxShadow: "0 2px 8px rgba(18, 25, 38, 0.04)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 18,
+            }}
+          >
+            <div style={{ maxWidth: 760 }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: "#1E40AF",
+                  background: "#DBEAFE",
+                  padding: "3px 9px",
+                  borderRadius: 3,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  marginBottom: 8,
+                }}
+              >
+                <UserCheck size={13} color="#1E40AF" />
+                <span>Eligibility Profile Required — Not Assessed</span>
+              </div>
+              <h2
+                style={{
+                  fontFamily: serif,
+                  fontSize: "clamp(20px, 2.4vw, 24px)",
+                  fontWeight: 700,
+                  color: INK,
+                  margin: "0 0 8px 0",
+                  lineHeight: 1.3,
+                }}
+              >
+                Explore National Schemes or Complete Profile to Check Real-Time Eligibility
+              </h2>
+              <p
+                style={{
+                  fontFamily: sans,
+                  fontSize: 14,
+                  color: INK_MUTED,
+                  lineHeight: 1.6,
+                  margin: 0,
+                }}
+              >
+                You are currently browsing the unassessed Government Scheme Directory. Enter your age, state, social category, and income to run our deterministic matching engine and reveal accurate eligibility statuses and match ratings.
+              </p>
+            </div>
+
+            {onRetakeProfile && (
+              <button
+                type="button"
+                onClick={onRetakeProfile}
+                style={{
+                  fontFamily: sans,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  padding: "12px 22px",
+                  border: "none",
+                  borderRadius: 4,
+                  background: "#1D4ED8",
+                  color: "#FFFFFF",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  boxShadow: "0 2px 4px rgba(29, 78, 216, 0.25)",
+                }}
+              >
+                <SlidersHorizontal size={16} />
+                <span>Complete Profile to Check Eligibility</span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : topMatch && topMatch.score >= 50 && (
         <div
           style={{
             background: CARD,
@@ -463,7 +606,7 @@ export default function Results({
                 }}
               >
                 <Sparkles size={12} />
-                <span>Top Algorithmic Match for Your Profile</span>
+                <span>{t.topMatchBadge || "★ TOP ELIGIBLE MATCH"}</span>
               </div>
               <h2
                 style={{
@@ -499,16 +642,21 @@ export default function Results({
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: INK_MUTED, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  {t.matchRatingLabel || t.matchScore || "Match Rating"}
+                </div>
                 <div style={{ fontSize: 24, fontWeight: 700, fontFamily: serif, color: OK }}>
-                  {topMatch.score}%
+                  {topMatch.matchRating ?? topMatch.score}/100
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: INK_LIGHT, textTransform: "uppercase" }}>
-                  Compatibility Score
-                </div>
+                {topMatch.scoreCoverage && (
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: "#64748B" }}>
+                    Coverage: {topMatch.scoreCoverage}
+                  </div>
+                )}
               </div>
-              <ScoreBadge score={topMatch.score} size="lg" />
+              <ScoreBadge score={topMatch.matchRating ?? topMatch.score} size="lg" />
             </div>
           </div>
 
@@ -527,7 +675,7 @@ export default function Results({
               lineHeight: 1.5,
             }}
           >
-            <strong style={{ color: INK }}>Financial Benefit:</strong>{" "}
+            <strong style={{ color: INK }}>{t.benefitsTitle || "Financial Benefit"}:</strong>{" "}
             <span style={{ color: INK_MUTED }}>{topMatch.scheme.benefits}</span>
           </div>
 
@@ -567,7 +715,7 @@ export default function Results({
                 cursor: "pointer",
               }}
             >
-              <span>View Full Criteria &amp; Checklist</span>
+              <span>{t.detailsAndApply || "View Full Criteria & Checklist"}</span>
               <ArrowRight size={15} />
             </button>
           </div>
@@ -603,16 +751,30 @@ export default function Results({
           {[
             {
               id: "all",
-              label: "All Schemes",
+              label: t.allSchemes || "All Schemes",
               count: statusCounts.all,
               color: INK,
               activeBg: INK,
               activeText: "#FFFFFF",
               border: RULE,
             },
+            ...(statusCounts.notAssessed > 0
+              ? [
+                  {
+                    id: "not_assessed",
+                    label: "Not Assessed (Profile Required)",
+                    count: statusCounts.notAssessed,
+                    color: "#475569",
+                    activeBg: "#475569",
+                    activeText: "#FFFFFF",
+                    border: "#94A3B8",
+                    icon: <UserCheck size={13} />,
+                  },
+                ]
+              : []),
             {
               id: "eligible",
-              label: "Eligible (Verified)",
+              label: t.filterEligible || "Eligible (Verified)",
               count: statusCounts.eligible,
               color: "#059669",
               activeBg: "#059669",
@@ -622,7 +784,7 @@ export default function Results({
             },
             {
               id: "potentially_eligible",
-              label: "Potentially Eligible",
+              label: t.filterPotential || "Potentially Eligible",
               count: statusCounts.potentiallyEligible,
               color: "#D97706",
               activeBg: "#D97706",
@@ -632,7 +794,7 @@ export default function Results({
             },
             {
               id: "not_eligible",
-              label: "Not Eligible",
+              label: t.filterNotEligible || "Not Eligible",
               count: statusCounts.notEligible,
               color: "#DC2626",
               activeBg: "#DC2626",
@@ -644,7 +806,7 @@ export default function Results({
               ? [
                   {
                     id: "bookmarked",
-                    label: "Saved Bookmarks",
+                    label: t.bookmarkedOnly || "Saved Bookmarks",
                     count: statusCounts.bookmarked,
                     color: "#B45309",
                     activeBg: "#B45309",
@@ -709,7 +871,7 @@ export default function Results({
               type="text"
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search across 500+ schemes by keyword, trade (farmer, artisan, youth), subsidy, state, or ministry..."
+              placeholder={t.searchPlaceholder || "Search across 500+ schemes by keyword, trade, subsidy, state, or ministry..."}
               style={{
                 width: "100%",
                 padding: "10px 14px 10px 38px",
@@ -731,13 +893,15 @@ export default function Results({
           {/* Row 1: Match Tier Pills */}
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: INK_MUTED, textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Match Tier:
+              {t.matchTier || "Match Tier"}:
             </span>
             {[
-              { id: "all", label: `All (${tierCounts.all})` },
-              { id: "high", label: `Strong Match ≥70% (${tierCounts.high})` },
-              { id: "moderate", label: `Partial 40–69% (${tierCounts.moderate})` },
-              { id: "gap", label: `Gaps <40% (${tierCounts.gap})` },
+              { id: "all", label: `${t.filterTierAll || "All"} (${tierCounts.all})` },
+              { id: "excellent", label: `${t.filterExcellent || "Excellent 85–100"} (${tierCounts.excellent})` },
+              { id: "strong", label: `${t.filterStrong || "Strong 70–84"} (${tierCounts.strong})` },
+              { id: "moderate", label: `${t.filterModerate || "Moderate 50–69"} (${tierCounts.moderate})` },
+              { id: "low", label: `${t.filterLow || "Low 25–49"} (${tierCounts.low})` },
+              { id: "weak", label: `${t.filterWeak || "Weak 1–24"} (${tierCounts.weak})` },
             ].map((tOption) => {
               const active = tierFilter === tOption.id;
               return (
@@ -778,12 +942,12 @@ export default function Results({
             {/* Government Level Toggle */}
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: INK_MUTED, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Level:
+                {t.governmentLevel || "Level"}:
               </span>
               {[
-                { id: "all", label: `All Levels (${levelCounts.all})` },
-                { id: "central", label: `Central (${levelCounts.central})` },
-                { id: "state", label: `State (${levelCounts.state})` },
+                { id: "all", label: `${t.allSchemes || "All Levels"} (${levelCounts.all})` },
+                { id: "central", label: `${t.centralGov || "Central"} (${levelCounts.central})` },
+                { id: "state", label: `${t.stateGov || "State"} (${levelCounts.state})` },
               ].map((lvlOption) => {
                 const active = levelFilter === lvlOption.id;
                 return (
@@ -877,7 +1041,7 @@ export default function Results({
               {/* Sort Dropdown */}
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <label htmlFor="dir-sort-select" style={{ fontSize: 12, fontWeight: 600, color: INK_MUTED }}>
-                  Sort:
+                  {t.sortBy || "Sort:"}
                 </label>
                 <select
                   id="dir-sort-select"
@@ -894,9 +1058,9 @@ export default function Results({
                     outline: "none",
                   }}
                 >
-                  <option value="score-desc">Match Score (Highest First)</option>
-                  <option value="funding-desc">Maximum Funding Limit</option>
-                  <option value="name-asc">Alphabetical (A to Z)</option>
+                  <option value="score-desc">{t.sortMatchRating || "Match Rating (Highest First)"}</option>
+                  <option value="funding-desc">{t.sortMaxBenefit || "Maximum Funding Limit"}</option>
+                  <option value="name-asc">{t.sortAlphabetical || "Alphabetical (A to Z)"}</option>
                 </select>
               </div>
             </div>
@@ -952,7 +1116,7 @@ export default function Results({
               }}
             >
               <ChevronLeft size={14} />
-              <span>Prev</span>
+              <span>{t.prevPage || "Prev"}</span>
             </button>
             <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>
               {safeCurrentPage} / {totalPages}
@@ -975,7 +1139,7 @@ export default function Results({
                 fontWeight: 600,
               }}
             >
-              <span>Next</span>
+              <span>{t.nextPage || "Next"}</span>
               <ChevronRight size={14} />
             </button>
           </div>
@@ -997,7 +1161,7 @@ export default function Results({
             }}
           >
             <p style={{ fontFamily: serif, fontSize: 18, color: INK, margin: "0 0 8px 0" }}>
-              No schemes match the current filters.
+              {t.noSchemesFound || "No schemes match the current filters."}
             </p>
             <p style={{ fontSize: 13.5, color: INK_MUTED, margin: "0 0 16px 0" }}>
               Try clearing your search keyword, resetting level, or switching the target group to "All Groups".
@@ -1024,7 +1188,7 @@ export default function Results({
                 cursor: "pointer",
               }}
             >
-              Reset All Filters
+              {t.resetFilters || "Reset All Filters"}
             </button>
           </div>
         ) : (
@@ -1032,6 +1196,11 @@ export default function Results({
             const {
               scheme,
               score,
+              matchRating,
+              ratingLabel,
+              scoreCoverage,
+              scoreExplanation = [],
+              scoreBreakdown = {},
               reasons,
               eligibilityStatus,
               isEligible,
@@ -1044,12 +1213,16 @@ export default function Results({
               criteriaAudit,
             } = matchItem;
 
-            const status =
-              eligibilityStatus ||
-              (isEligible ? "Eligible" : isNotEligible ? "Not Eligible" : "Potentially Eligible");
-            const isStatusEligible = status === "Eligible";
-            const isStatusPotentially = status === "Potentially Eligible";
-            const isStatusNotEligible = status === "Not Eligible";
+            const isNotAssessed = matchItem.isNotAssessed || matchItem.isAssessed === false || eligibilityStatus === "Not Assessed" || !isProfileProvided;
+            const displayScore = isNotAssessed ? null : (matchRating ?? score);
+
+            const status = isNotAssessed
+              ? "Not Assessed"
+              : (eligibilityStatus || (isEligible ? "Eligible" : isNotEligible ? "Not Eligible" : "Potentially Eligible"));
+            const isStatusNotAssessed = status === "Not Assessed";
+            const isStatusEligible = !isStatusNotAssessed && status === "Eligible";
+            const isStatusPotentially = !isStatusNotAssessed && status === "Potentially Eligible";
+            const isStatusNotEligible = !isStatusNotAssessed && status === "Not Eligible";
 
             const isBookmarked = (bookmarks || []).some(
               (b) => (b.scheme?.id || b.schemeId) === scheme.id
@@ -1072,7 +1245,9 @@ export default function Results({
                 style={{
                   background: CARD,
                   border: `1px solid ${RULE}`,
-                  borderLeft: isStatusEligible
+                  borderLeft: isStatusNotAssessed
+                    ? `5px solid #94A3B8`
+                    : isStatusEligible
                     ? `5px solid #10B981`
                     : isStatusPotentially
                     ? `5px solid #F59E0B`
@@ -1185,27 +1360,58 @@ export default function Results({
                         gap: 5,
                         fontSize: 12,
                         fontWeight: 700,
-                        color: isStatusEligible ? "#047857" : isStatusPotentially ? "#92400E" : "#B91C1C",
-                        background: isStatusEligible ? "#D1FAE5" : isStatusPotentially ? "#FEF3C7" : "#FEE2E2",
-                        border: `1px solid ${isStatusEligible ? "#6EE7B7" : isStatusPotentially ? "#FCD34D" : "#FCA5A5"}`,
+                        color: isStatusNotAssessed
+                          ? "#475569"
+                          : isStatusEligible
+                          ? "#047857"
+                          : isStatusPotentially
+                          ? "#92400E"
+                          : "#B91C1C",
+                        background: isStatusNotAssessed
+                          ? "#F1F5F9"
+                          : isStatusEligible
+                          ? "#D1FAE5"
+                          : isStatusPotentially
+                          ? "#FEF3C7"
+                          : "#FEE2E2",
+                        border: `1px solid ${
+                          isStatusNotAssessed
+                            ? "#CBD5E1"
+                            : isStatusEligible
+                            ? "#6EE7B7"
+                            : isStatusPotentially
+                            ? "#FCD34D"
+                            : "#FCA5A5"
+                        }`,
                         padding: "3px 9px",
                         borderRadius: 4,
                         letterSpacing: 0.4,
                         textTransform: "uppercase",
                       }}
                     >
+                      {isStatusNotAssessed && <UserCheck size={13} color="#64748B" />}
                       {isStatusEligible && <CheckCircle2 size={13} color="#059669" />}
                       {isStatusPotentially && <AlertTriangle size={13} color="#D97706" />}
                       {isStatusNotEligible && <XCircle size={13} color="#DC2626" />}
-                      <span>{status}</span>
+                      <span>
+                        {isStatusNotAssessed
+                          ? "Not Assessed"
+                          : isStatusPotentially && passedCriteria.length === 0
+                          ? "Complete Profile"
+                          : status}
+                      </span>
                     </span>
 
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 6 }}
-                      title="Relevance match score (0–100) calculated independently from mandatory eligibility rules"
+                      title={
+                        isStatusNotAssessed
+                          ? "Eligibility Not Assessed — Complete profile to calculate match rating"
+                          : "Match rating (0–100) calculated dynamically from user profile and verified eligibility criteria"
+                      }
                     >
-                      <span style={{ fontSize: 11, fontWeight: 600, color: INK_MUTED }}>Score:</span>
-                      <ScoreBadge score={score} size="md" />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: INK_MUTED }}>Match Rating:</span>
+                      <ScoreBadge score={isStatusNotAssessed ? null : displayScore} size="md" />
                     </div>
                   </div>
                 </div>
@@ -1476,6 +1682,34 @@ export default function Results({
                           </div>
                         </div>
                       )}
+
+                      {scoreExplanation && scoreExplanation.length > 0 && (
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#1E40AF",
+                              marginBottom: 4,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                            }}
+                          >
+                            <Sparkles size={13} color="#2563EB" />
+                            <span>
+                              Match Rating Calculation ({isStatusNotAssessed ? "Not Assessed" : `${displayScore}/100`} • Coverage: {isStatusNotAssessed ? "0%" : (scoreCoverage || "100%")}):
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingLeft: 18 }}>
+                            {scoreExplanation.map((expl, i) => (
+                              <div key={i} style={{ fontSize: 11.5, color: "#1E3A8A", lineHeight: 1.4 }}>
+                                • <strong>{expl.label || expl.criterion}:</strong> {expl.detail} ({expl.awardedPoints}/{expl.normalizedWeight} pts)
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1512,9 +1746,33 @@ export default function Results({
                       onMouseOver={(e) => (e.currentTarget.style.backgroundColor = SEAL_HOVER)}
                       onMouseOut={(e) => (e.currentTarget.style.backgroundColor = SEAL)}
                     >
-                      <span>View Scheme Details &amp; Checklist</span>
+                      <span>{t.detailsAndApply || "View Scheme Details & Checklist"}</span>
                       <ArrowRight size={14} />
                     </button>
+
+                    {isStatusNotAssessed && onRetakeProfile && (
+                      <button
+                        type="button"
+                        onClick={onRetakeProfile}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "8px 16px",
+                          background: "#EFF6FF",
+                          color: "#1D4ED8",
+                          border: "1px solid #BFDBFE",
+                          borderRadius: 4,
+                          fontFamily: sans,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <SlidersHorizontal size={14} color="#1D4ED8" />
+                        <span>Complete Profile to Check Eligibility</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -1541,7 +1799,7 @@ export default function Results({
                         fill={isBookmarked ? "#F59E0B" : "none"}
                         color={isBookmarked ? "#D97706" : INK_MUTED}
                       />
-                      <span>{isBookmarked ? "Saved" : "Save Scheme"}</span>
+                      <span>{isBookmarked ? (t.bookmarkedOnly || "Saved") : (t.saveScheme || "Save Scheme")}</span>
                     </button>
                   </div>
 
@@ -1567,7 +1825,7 @@ export default function Results({
                       onMouseOver={(e) => (e.currentTarget.style.background = "#DBEAFE")}
                       onMouseOut={(e) => (e.currentTarget.style.background = "#EFF6FF")}
                     >
-                      <span>Official Portal</span>
+                      <span>{t.officialPortal || "Official Portal"}</span>
                       <ExternalLink size={13} color="#1D4ED8" />
                     </a>
                   )}

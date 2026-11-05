@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "vite build && cp dist/index.html standalone/index.html",
     "preview": "vite preview",
-    "test": "node --test --test-concurrency=1 tests/*.test.js"
+    "test": "node tests/test-runner.js",
+    "test:engine": "node tests/test-runner.js tests/matcher.test.js tests/eligibility-engine-574.test.js tests/match-rating-and-income-validation.test.js",
+    "test:auth": "node tests/test-runner.js tests/auth-flows.test.js tests/auth-session.test.js tests/application-ownership.test.js tests/security.test.js",
+    "test:db": "node tests/test-runner.js tests/database-persistence.test.js tests/database-migrations.test.js",
+    "test:schemes": "node tests/test-runner.js tests/scheme-expansion.test.js",
+    "test:dossier": "node tests/test-runner.js tests/bank-dossier-admin.test.js",
+    "test:docs": "node tests/test-runner.js tests/document-verification.test.js",
+    "test:i18n": "node tests/test-runner.js tests/i18n-localization.test.js",
+    "test:sync": "node tests/test-runner.js tests/scheme-ingestion.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

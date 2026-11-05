@@ -50,7 +50,19 @@ export default function Details({
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
   if (!match) return null;
-  const { scheme, score, reasons } = match;
+  const {
+    scheme,
+    score,
+    matchRating,
+    ratingLabel,
+    scoreCoverage,
+    coveragePercent,
+    scoreExplanation = [],
+    scoreBreakdown = {},
+    reasons,
+  } = match;
+  const isNotAssessed = match.isNotAssessed || match.isAssessed === false || match.eligibilityStatus === "Not Assessed";
+  const displayScore = isNotAssessed ? null : (matchRating ?? score);
 
   const defaultSteps = scheme.applicationSteps || [
     "Prepare required certificates & DPR",
@@ -207,8 +219,63 @@ export default function Details({
           </p>
         </div>
 
-        <ScoreBadge score={score} size="lg" />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            {isNotAssessed ? "Eligibility Assessment" : "Match Rating"}
+          </div>
+          <ScoreBadge score={displayScore} size="lg" />
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>
+            {isNotAssessed ? "Profile Required" : `Coverage: ${scoreCoverage || "100%"}`}
+          </div>
+        </div>
       </div>
+
+      {/* Profile Not Assessed Notice */}
+      {isNotAssessed && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: "14px 18px",
+            background: "#EFF6FF",
+            border: "1px solid #BFDBFE",
+            borderLeft: "4px solid #1D4ED8",
+            borderRadius: 4,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 700, color: "#1E40AF", fontSize: 13.5, marginBottom: 2 }}>
+              Eligibility Not Assessed — Citizen Profile Required
+            </div>
+            <div style={{ fontSize: 13, color: "#334155" }}>
+              Enter your age, location, category, and income to determine whether you qualify for {scheme.name}.
+            </div>
+          </div>
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("profile")}
+              style={{
+                background: "#1D4ED8",
+                color: "#FFFFFF",
+                border: "none",
+                borderRadius: 4,
+                padding: "8px 16px",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Complete Profile to Check Eligibility
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Official Advisory Notice */}
       <div
@@ -431,6 +498,34 @@ export default function Details({
               <span>{simplifyGovtText(r, isPlainMode, lang)}</span>
             </div>
           ))}
+
+          {scoreExplanation && scoreExplanation.length > 0 && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${RULE}` }}>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  color: "#1E40AF",
+                  marginBottom: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Sparkles size={14} color="#2563EB" />
+                <span>
+                  Match Rating Formula &amp; Criteria Weights ({isNotAssessed ? "Not Assessed" : `${displayScore}/100`} • Coverage: {isNotAssessed ? "0%" : (scoreCoverage || "100%")}):
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, paddingLeft: 6 }}>
+                {scoreExplanation.map((expl, i) => (
+                  <div key={i} style={{ fontSize: 12, color: "#1E3A8A", lineHeight: 1.5 }}>
+                    • <strong>{expl.label || expl.criterion}:</strong> {expl.detail} ({expl.awardedPoints}/{expl.normalizedWeight} pts)
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

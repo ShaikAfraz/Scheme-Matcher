@@ -52,7 +52,7 @@ describe("Bank Dossier & Administrative Portal Comprehensive Test Suite", () => 
       name: "Lead Bank Admin Sharma",
       role: "Lead Bank & Administrative Auditor",
     });
-    adminId = admin.id;
+    adminId = admin?.id || admin;
 
     // 2. Start HTTP server with API middleware
     const middleware = createDatabaseApiMiddleware();

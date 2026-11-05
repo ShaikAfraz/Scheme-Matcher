@@ -31,6 +31,7 @@ import {
   sans,
 } from "../theme/tokens.js";
 import { TRANSLATIONS } from "../theme/i18n.js";
+import { parseFinancialAmount, formatINRLakhs } from "../utils/financialInput.js";
 
 const STATES = [
   "Andhra Pradesh",
@@ -71,7 +72,7 @@ export default function ProfileForm({
   };
 
   const setNum = (k) => (e) => {
-    const v = e.target.value === "" ? "" : Number(e.target.value);
+    const v = e.target.value;
     setProfile((p) => ({ ...p, [k]: v }));
   };
 
@@ -79,15 +80,41 @@ export default function ProfileForm({
     setProfile((p) => ({ ...p, [k]: !p[k] }));
   };
 
-  const isStep1Valid = profile.age !== "" && profile.gender && profile.state;
+  // Financial field validations
+  const incomeValidation = parseFinancialAmount(profile.income, {
+    fieldName: "Annual Family Income",
+    allowZero: true,
+  });
+
+  const reqValidation = parseFinancialAmount(profile.financialRequirement, {
+    fieldName: "Funding Requirement",
+    allowZero: true,
+    min: 0,
+  });
+
+  const isStep1Valid = profile.age !== "" && !isNaN(profile.age) && Number(profile.age) >= 1 && profile.gender && profile.state;
   const isStep2Valid = Boolean(profile.category);
   const isStep3Valid =
-    profile.income !== "" &&
-    profile.businessStatus &&
-    profile.businessType &&
-    profile.financialRequirement !== "";
+    !incomeValidation.isEmpty &&
+    incomeValidation.isValid &&
+    Boolean(profile.businessStatus) &&
+    Boolean(profile.businessType) &&
+    !reqValidation.isEmpty &&
+    reqValidation.isValid;
 
   const canSubmit = isStep1Valid && isStep2Valid && isStep3Valid;
+
+  const handleFinalSubmit = () => {
+    if (!canSubmit || isSaving) return;
+    const cleanedProfile = {
+      ...profile,
+      age: Number(profile.age),
+      income: incomeValidation.numeric !== null ? incomeValidation.numeric : 0,
+      financialRequirement: reqValidation.numeric !== null ? reqValidation.numeric : 0,
+    };
+    setProfile(cleanedProfile);
+    if (onSubmit) onSubmit(cleanedProfile);
+  };
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto" }}>
@@ -496,32 +523,60 @@ export default function ProfileForm({
                 label="Annual Family Income (₹) *"
                 hint="Total income of family as shown on Revenue authority income certificate."
               >
-                <input
-                  type="number"
-                  min="0"
-                  step="5000"
-                  value={profile.income}
-                  onChange={setNum("income")}
-                  placeholder="e.g. 150000"
-                  style={inputStyle}
-                  required
-                />
+                <div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={profile.income ?? ""}
+                    onChange={setNum("income")}
+                    placeholder="e.g. 150000 or ₹1,50,000"
+                    style={{
+                      ...inputStyle,
+                      borderColor: !incomeValidation.isValid && !incomeValidation.isEmpty ? "#DC2626" : undefined,
+                    }}
+                    required
+                  />
+                  {incomeValidation.formattedLakhs && (
+                    <div style={{ fontSize: 11.5, color: "#059669", fontWeight: 600, marginTop: 4 }}>
+                      ✓ Recognized: {incomeValidation.formattedLakhs}
+                    </div>
+                  )}
+                  {!incomeValidation.isValid && !incomeValidation.isEmpty && (
+                    <div style={{ fontSize: 11.5, color: "#DC2626", fontWeight: 600, marginTop: 4 }}>
+                      ⚠️ {incomeValidation.error}
+                    </div>
+                  )}
+                </div>
               </Field>
 
               <Field
                 label="Funding / Loan Requirement (₹) *"
                 hint="Capital needed for tools, working capital, or workshop machinery."
               >
-                <input
-                  type="number"
-                  min="1000"
-                  step="10000"
-                  value={profile.financialRequirement}
-                  onChange={setNum("financialRequirement")}
-                  placeholder="e.g. 200000"
-                  style={inputStyle}
-                  required
-                />
+                <div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={profile.financialRequirement ?? ""}
+                    onChange={setNum("financialRequirement")}
+                    placeholder="e.g. 200000 or ₹2,00,000"
+                    style={{
+                      ...inputStyle,
+                      borderColor: !reqValidation.isValid && !reqValidation.isEmpty ? "#DC2626" : undefined,
+                    }}
+                    required
+                  />
+                  {reqValidation.formattedLakhs && (
+                    <div style={{ fontSize: 11.5, color: "#059669", fontWeight: 600, marginTop: 4 }}>
+                      ✓ Recognized: {reqValidation.formattedLakhs}
+                    </div>
+                  )}
+                  {!reqValidation.isValid && !reqValidation.isEmpty && (
+                    <div style={{ fontSize: 11.5, color: "#DC2626", fontWeight: 600, marginTop: 4 }}>
+                      ⚠️ {reqValidation.error}
+                    </div>
+                  )}
+                </div>
               </Field>
             </div>
 
@@ -638,7 +693,7 @@ export default function ProfileForm({
 
               <button
                 type="button"
-                onClick={onSubmit}
+                onClick={handleFinalSubmit}
                 disabled={!canSubmit || isSaving}
                 style={{
                   display: "inline-flex",

@@ -33,7 +33,8 @@ import Details from "./screens/Details.jsx";
 import Documents from "./screens/Documents.jsx";
 import Assistant from "./screens/Assistant.jsx";
 import ApplicationTracker from "./screens/ApplicationTracker.jsx";
-import { matchSchemes } from "./engine/matcher.js";
+import { matchSchemes, isProfileEmpty } from "./engine/matcher.js";
+import { parseFinancialAmount } from "./utils/financialInput.js";
 import { SCHEMES } from "./data/schemes.js";
 import {
   getStoredActiveUser,
@@ -155,15 +156,28 @@ export default function App() {
     }
   }, [currentUser, screen]);
 
+  const formatProfileForMatcher = (rawProfile) => {
+    if (!rawProfile) return {};
+    const parsedIncome = parseFinancialAmount(rawProfile.income, { fieldName: "Annual Family Income" });
+    const parsedReq = parseFinancialAmount(rawProfile.financialRequirement, { fieldName: "Financial Requirement" });
+    return {
+      ...rawProfile,
+      age: rawProfile.age !== "" && rawProfile.age != null && !isNaN(Number(rawProfile.age))
+        ? Number(rawProfile.age)
+        : undefined,
+      income: parsedIncome.valid && parsedIncome.numeric != null
+        ? parsedIncome.numeric
+        : (rawProfile.income === 0 ? 0 : undefined),
+      financialRequirement: parsedReq.valid && parsedReq.numeric != null
+        ? parsedReq.numeric
+        : (rawProfile.financialRequirement === 0 ? 0 : undefined),
+    };
+  };
+
   // On mount, synchronize with active user data & browser URL hash
   useEffect(() => {
     if (currentUser && currentUser.profileData && currentUser.profileData.age) {
-      const formatted = {
-        ...currentUser.profileData,
-        age: Number(currentUser.profileData.age),
-        income: Number(currentUser.profileData.income),
-        financialRequirement: Number(currentUser.profileData.financialRequirement),
-      };
+      const formatted = formatProfileForMatcher(currentUser.profileData);
       setMatches(matchSchemes(formatted));
     }
 
@@ -247,26 +261,18 @@ export default function App() {
   }, [currentUser, screen]);
 
 
-  // Fallback schemes if user visits Results tab directly
+  // Evaluated schemes: If user ran assessment, use matches; else if profile has data, evaluate profile; otherwise evaluate empty profile (Not Assessed)
   const displayMatches = useMemo(() => {
     if (matches && matches.length > 0) return matches;
-    const defaultProfile = {
-      age: 28,
-      income: 120000,
-      financialRequirement: 150000,
-      gender: "Male",
-      state: "ALL",
-      category: "ALL",
-      businessStatus: "new",
-      businessType: "Manufacturing",
-      isSafaiKaramchari: false,
-      isDivyangjan: false,
-      isArtisan: false,
-      isTransgender: false,
-      isDnt: false,
-    };
-    return matchSchemes(defaultProfile);
-  }, [matches]);
+    if (profile && !isProfileEmpty(profile)) {
+      return matchSchemes(formatProfileForMatcher(profile));
+    }
+    return matchSchemes({});
+  }, [matches, profile]);
+
+  const hasCompletedProfile = useMemo(() => {
+    return !isProfileEmpty(profile);
+  }, [profile]);
 
   // Website navigation with browser history stack & smooth page transitions
   const navigateTo = (targetScreen, dir = "slide-forward", detailId = null) => {
@@ -316,12 +322,7 @@ export default function App() {
   };
 
   const runMatch = async () => {
-    const formattedProfile = {
-      ...profile,
-      age: Number(profile.age) || 28,
-      income: Number(profile.income) || 120000,
-      financialRequirement: Number(profile.financialRequirement) || 150000,
-    };
+    const formattedProfile = formatProfileForMatcher(profile);
     const results = matchSchemes(formattedProfile);
     setMatches(results);
 
@@ -358,11 +359,13 @@ export default function App() {
             matchedSchemesCount: results.length,
             topSchemeId: topMatch?.scheme?.id || null,
             topSchemeName: topMatch?.scheme?.name || null,
-            topScore: topMatch?.score ?? 0,
+            topScore: topMatch?.matchRating ?? topMatch?.score ?? 0,
             resultsSummary: results.slice(0, 10).map((r) => ({
               id: r.scheme?.id,
               name: r.scheme?.name,
-              score: r.score,
+              score: r.matchRating ?? r.score,
+              matchRating: r.matchRating ?? r.score,
+              ratingLabel: r.ratingLabel,
               greenReasons: r.reasons?.green || [],
             })),
           }),
@@ -453,12 +456,7 @@ export default function App() {
     let calculated = null;
     if (userData.profileData) {
       setProfile(userData.profileData);
-      const formatted = {
-        ...userData.profileData,
-        age: Number(userData.profileData.age),
-        income: Number(userData.profileData.income),
-        financialRequirement: Number(userData.profileData.financialRequirement),
-      };
+      const formatted = formatProfileForMatcher(userData.profileData);
       calculated = matchSchemes(formatted);
       setMatches(calculated);
     }
@@ -469,11 +467,10 @@ export default function App() {
 
     setApplications(getStoredApplications(userData.id));
 
-    // Show celebration notification toast
+    // Show notification toast
     setWelcomeToast({
       name: userData.name,
       schemesCount: calculated ? calculated.length : 15,
-      isDemo: userData.isDemo,
     });
     setTimeout(() => setWelcomeToast(null), 6000);
 
@@ -538,29 +535,29 @@ export default function App() {
   const getBreadcrumbTitle = () => {
     switch (screen) {
       case "login":
-        return "Citizen Sign In";
+        return t.bcLogin || "Citizen Sign In";
       case "register":
-        return "Citizen Registration & Profile Creation";
+        return t.bcRegister || "Citizen Registration & Profile Creation";
       case "dashboard":
-        return "Citizen Account Dashboard";
+        return t.bcDashboard || "Citizen Account Dashboard";
       case "admin-login":
-        return "Administrative Central Desk Login";
+        return t.bcAdminLogin || "Administrative Central Desk Login";
       case "admin-dashboard":
-        return "Institutional Administrative Console";
+        return t.bcAdminDashboard || "Institutional Administrative Console";
       case "profile":
-        return "Scheme Eligibility Questionnaire";
+        return t.bcProfile || "Scheme Eligibility Questionnaire";
       case "results":
-        return "Recommended Government Schemes";
+        return t.bcResults || "Recommended Government Schemes";
       case "details":
-        return selectedMatch ? selectedMatch.scheme.name.split("—")[0].trim() : "Scheme Details & Benefits";
+        return selectedMatch ? selectedMatch.scheme.name.split("—")[0].trim() : (t.bcDetails || "Scheme Details & Benefits");
       case "tracker":
-        return "Application Progress Tracker";
+        return t.bcTracker || "Application Progress Tracker";
       case "documents":
-        return "Digital Document Vault";
+        return t.bcDocuments || "Digital Document Vault";
       case "assistant":
-        return "Grounded AI Scheme Assistant";
+        return t.bcAssistant || "Grounded AI Scheme Assistant";
       default:
-        return "Home";
+        return t.bcHome || "Home";
     }
   };
 
@@ -619,25 +616,43 @@ export default function App() {
           >
             <div
               style={{
-                width: 38,
-                height: 38,
-                borderRadius: 4,
-                background: "#FDF6EC",
-                border: `1px solid ${SEAL}`,
+                width: 42,
+                height: 42,
+                borderRadius: 8,
+                background: "linear-gradient(135deg, #0A1F3D 0%, #0F2E5A 100%)",
+                border: "1.5px solid #CBD5E1",
+                boxShadow: "0 2px 6px rgba(15, 46, 90, 0.15)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
               }}
             >
-              <Compass size={20} color={SEAL} />
+              <Compass size={22} color="#FDE68A" />
             </div>
             <div>
-              <div style={{ fontFamily: serif, fontSize: 21, color: INK, fontWeight: 700, lineHeight: 1.2 }}>
-                Scheme Matcher
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontFamily: serif, fontSize: 22, color: "#0F2E5A", fontWeight: 700, lineHeight: 1.2 }}>
+                  {t.appName || "Scheme Matcher"}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    background: "#FFF7ED",
+                    color: "#E06714",
+                    border: "1px solid #FFEDD5",
+                    padding: "1px 6px",
+                    borderRadius: 4,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Citizen Portal
+                </span>
               </div>
               <div style={{ fontFamily: sans, fontSize: 11.5, color: "#64748B", marginTop: 2, fontWeight: 500 }}>
-                Civic Welfare &amp; Micro-Enterprise Discovery Engine
+                {t.appSubtitle || "Civic Welfare & Micro-Enterprise Discovery Engine"}
               </div>
             </div>
           </div>
@@ -672,7 +687,7 @@ export default function App() {
                   background: dbStatus?.status === "connected" ? "#16A34A" : "#D97706",
                 }}
               />
-              <span>{dbStatus?.status === "connected" ? `SQLite Active · ${dbStatus?.counts?.schemes || SCHEMES.length} Schemes Codified` : "Local Database Active"}</span>
+              <span>{dbStatus?.status === "connected" ? `${t.dbActive || "SQLite Active"} · ${dbStatus?.counts?.schemes || SCHEMES.length} ${t.schemesCodified || "Schemes Codified"}` : (t.dbActive || "Local Database Active")}</span>
             </div>
             {currentUser ? (
               <div
@@ -706,7 +721,7 @@ export default function App() {
                     {currentUser.name}
                   </div>
                   <div style={{ fontSize: 10, color: currentUser.systemRole === "admin" ? "#B45309" : SEAL, fontWeight: 600 }}>
-                    {currentUser.systemRole === "admin" ? "Admin Console ↗" : currentUser.categoryBadge ? currentUser.categoryBadge.split("·")[0] : "Verified Citizen"}
+                    {currentUser.systemRole === "admin" ? (t.navAdminConsole || "Admin Console ↗") : currentUser.categoryBadge ? currentUser.categoryBadge.split("·")[0] : (t.verifiedCitizen || "Verified Citizen")}
                   </div>
                 </button>
 
@@ -723,7 +738,7 @@ export default function App() {
                     display: "flex",
                     alignItems: "center",
                   }}
-                  title="Sign out of active account"
+                  title={t.signOut || "Sign out of active account"}
                 >
                   <LogOut size={13} />
                 </button>
@@ -748,7 +763,7 @@ export default function App() {
                 }}
               >
                 <KeyRound size={13} color={SEAL} />
-                <span>Citizen Login / Sign Up</span>
+                <span>{t.navCitizenLogin || "Citizen Login"}</span>
               </button>
             )}
 
@@ -768,10 +783,10 @@ export default function App() {
                   cursor: "pointer",
                   padding: "4px 6px",
                 }}
-                title="Reset active profile filter"
+                title={t.resetFilter || "Reset active profile filter"}
               >
                 <RefreshCw size={11} />
-                <span>Reset</span>
+                <span>{t.resetFilter || "Reset"}</span>
               </button>
             )}
           </div>
@@ -781,44 +796,44 @@ export default function App() {
         <div style={{ maxWidth: 1180, margin: "10px auto 0 auto", overflowX: "auto" }}>
           <nav style={{ display: "flex", gap: 4, minWidth: "max-content", paddingBottom: 0 }}>
             {[
-              { id: "home", label: "Home", icon: HomeIcon },
-              { id: "profile", label: "Check Eligibility", icon: SlidersHorizontal },
+              { id: "home", label: t.navHome || "Home", icon: HomeIcon },
+              { id: "profile", label: t.navProfile || "Check Eligibility", icon: SlidersHorizontal },
               {
                 id: "results",
-                label: "Scheme Directory",
+                label: t.navResults || "Scheme Directory",
                 icon: FileCheck2,
                 badge: (matches || displayMatches).length,
               },
               {
                 id: "tracker",
-                label: "Application Tracker",
+                label: t.navTracker || "Application Tracker",
                 icon: Clock,
                 badge: currentUser && applications.length > 0 ? applications.length : undefined,
                 highlight: currentUser && applications.length > 0,
               },
               {
                 id: "documents",
-                label: "Document Vault",
+                label: t.navDocuments || "Document Vault",
                 icon: FolderUp,
                 badge: documents.length > 0 ? documents.length : null,
               },
-              { id: "assistant", label: "AI Scheme Sahayak", icon: MessageCircle },
+              { id: "assistant", label: t.navAssistant || "AI Scheme Sahayak", icon: MessageCircle },
               currentUser?.systemRole === "admin"
                 ? {
                     id: "admin-dashboard",
-                    label: "Admin Console",
+                    label: t.navAdminConsole || "Admin Console",
                     icon: ShieldCheck,
                     highlight: true,
                   }
                 : currentUser
                 ? {
                     id: "dashboard",
-                    label: "My Dashboard",
+                    label: t.navMyDashboard || "My Dashboard",
                     icon: UserCheck,
                   }
                 : {
                     id: "login",
-                    label: "Citizen Login",
+                    label: t.navCitizenLogin || "Citizen Login",
                     icon: KeyRound,
                   },
             ].map((tab) => {
@@ -836,17 +851,17 @@ export default function App() {
                     padding: "9px 13px",
                     background: "transparent",
                     border: "none",
-                    borderBottom: isActive ? `3px solid ${SEAL}` : "3px solid transparent",
-                    color: isActive ? INK : "#64748B",
+                    borderBottom: isActive ? "3px solid #E06714" : "3px solid transparent",
+                    color: isActive ? "#0F2E5A" : "#64748B",
                     fontFamily: sans,
                     fontSize: 13,
-                    fontWeight: isActive ? 600 : 500,
+                    fontWeight: isActive ? 700 : 500,
                     cursor: "pointer",
                     borderRadius: "4px 4px 0 0",
                     transition: "all 0.15s ease",
                   }}
                   onMouseOver={(e) => {
-                    if (!isActive) e.currentTarget.style.color = INK;
+                    if (!isActive) e.currentTarget.style.color = "#0F2E5A";
                   }}
                   onMouseOut={(e) => {
                     if (!isActive) e.currentTarget.style.color = "#64748B";
@@ -907,7 +922,7 @@ export default function App() {
               <CheckCircle2 size={20} />
               <div>
                 <strong style={{ fontSize: 14 }}>
-                  {welcomeToast.isDemo ? "Demo Profile Loaded!" : "Citizen Registration Successful!"}
+                  Citizen Portal Session Active
                 </strong>
                 <div style={{ fontSize: 12.5, color: "#2E5D4B", marginTop: 2 }}>
                   Welcome, <strong>{welcomeToast.name}</strong>. You have been transferred to your matched schemes dashboard with {welcomeToast.schemesCount} eligible opportunities.
@@ -987,7 +1002,7 @@ export default function App() {
               onMouseOut={(e) => (e.currentTarget.style.background = "#FFFFFF")}
             >
               <ChevronLeft size={16} />
-              <span>Back</span>
+              <span>{t.back || "Back"}</span>
             </button>
 
             {/* Breadcrumb Path */}
@@ -1006,7 +1021,7 @@ export default function App() {
                   fontSize: 13,
                 }}
               >
-                Home
+                {t.bcHome || "Home"}
               </button>
               <span>/</span>
               <span style={{ color: INK, fontWeight: 600 }}>{getBreadcrumbTitle()}</span>
@@ -1160,6 +1175,7 @@ export default function App() {
                 currentUser={currentUser}
                 bookmarks={bookmarks}
                 onToggleBookmark={handleToggleBookmark}
+                hasCompletedProfile={hasCompletedProfile}
               />
             )}
 
@@ -1214,6 +1230,7 @@ export default function App() {
                 currentUser={currentUser}
                 authToken={getStoredAuthToken()}
                 schemes={SCHEMES}
+                lang={lang}
               />
             )}
 
@@ -1257,21 +1274,21 @@ export default function App() {
               <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#FFFFFF", marginBottom: 10 }}>
                 <Compass size={20} color="#FDE68A" />
                 <span style={{ fontWeight: 700, fontSize: 16, fontFamily: serif }}>
-                  Scheme Matcher
+                  {t.appName || "Scheme Matcher"}
                 </span>
               </div>
               <p style={{ fontSize: 13, color: "#94A3B8", lineHeight: 1.6, margin: "0 0 12px 0" }}>
-                Independent civic-technology discovery platform matching Indian artisans, micro-entrepreneurs, and citizens to official central and state welfare programs.
+                {t.footerMission || "Independent civic-technology discovery platform matching Indian artisans, micro-entrepreneurs, and citizens to official central and state welfare programs."}
               </p>
               <div style={{ fontSize: 11.5, color: "#CBD5E1", background: "rgba(255,255,255,0.06)", padding: "8px 12px", borderRadius: 4, borderLeft: `3px solid ${SEAL}` }}>
-                Academic Research &amp; Demonstration Project · Final Year BCA AI/ML
+                {t.footerAcademic || "Academic Research & Demonstration Project · Final Year BCA AI/ML"}
               </div>
             </div>
 
             {/* Official Portals Col */}
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.8, marginBottom: 12, textTransform: "uppercase" }}>
-                Authentic National Portals
+                {t.footerPortals || "Authentic National Portals"}
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
                 <li>
@@ -1305,7 +1322,7 @@ export default function App() {
             {/* Citizen Helplines Col */}
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#FFFFFF", letterSpacing: 0.5, marginBottom: 10 }}>
-                CITIZEN HELPDESK &amp; ASSISTANCE
+                {t.footerHelpline || "CITIZEN HELPDESK & ASSISTANCE"}
               </div>
               <div style={{ fontSize: 12.5, color: "#CBD5E1", lineHeight: 1.6 }}>
                 <div>National Portal Helpline: <strong>1800-11-8008</strong></div>
@@ -1332,7 +1349,7 @@ export default function App() {
             }}
           >
             <div>
-              © 2026 Scheme Matcher. Codified from Ministry of Social Justice &amp; Empowerment guidelines.
+              {t.footerCopyright || "© 2026 Scheme Matcher. Codified from Ministry of Social Justice & Empowerment guidelines."}
             </div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
               {dbStatus?.status === "connected" && (

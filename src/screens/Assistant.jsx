@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Bot, User, AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
 import VoiceReader from "../components/VoiceReader.jsx";
 import { INK, PAPER, SEAL, OK, RULE, inputStyle, serif, sans } from "../theme/tokens.js";
+import { TRANSLATIONS } from "../theme/i18n.js";
 
 const QUICK_PROMPTS = [
   "Which scheme is best suited for me?",
@@ -12,6 +13,7 @@ const QUICK_PROMPTS = [
 ];
 
 export default function Assistant({ profile, matches, initialQuery, lang = "en" }) {
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -160,10 +162,10 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h2 style={{ fontFamily: serif, fontSize: 28, color: INK, margin: "0 0 4px" }}>
-            AI Scheme Assistant
+            {t.assistantTitle || "AI Scheme Assistant"}
           </h2>
           <p style={{ fontFamily: sans, fontSize: 13.5, color: "#6B7280", margin: "0 0 16px" }}>
-            Grounded strictly in your matched schemes — it explains and summarises, it never invents eligibility.
+            {t.assistantSubtitle || "Grounded strictly in your matched schemes — it explains and summarises, it never invents eligibility."}
           </p>
         </div>
 
@@ -185,7 +187,7 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
             }}
           >
             <ShieldCheck size={13} color={OK} />
-            <span>Server-Side AI Proxy Active</span>
+            <span>{t.proxyActive || "Server-Side AI Proxy Active"}</span>
           </div>
         </div>
       </div>
@@ -266,7 +268,7 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
         {loading && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: sans, fontSize: 12.5, color: "#8A8266" }}>
             <Sparkles size={14} color={SEAL} />
-            <span>Consulting AI inference engine securely…</span>
+            <span>{t.consulting || "Consulting AI inference engine securely…"}</span>
           </div>
         )}
       </div>
@@ -275,7 +277,7 @@ export default function Assistant({ profile, matches, initialQuery, lang = "en" 
       <div style={{ display: "flex", gap: 8 }}>
         <input
           style={{ ...inputStyle, flex: 1 }}
-          placeholder="e.g. Why am I eligible for Stand-Up India? What documents do I need?"
+          placeholder={t.askPlaceholder || "e.g. Why am I eligible for Stand-Up India? What documents do I need?"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}

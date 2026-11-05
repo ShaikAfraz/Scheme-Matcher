@@ -285,6 +285,53 @@ describe("Comprehensive Security & Authentication Flows Suite", () => {
       assert.equal(data.success, false);
       assert.match(data.error, /invalid or expired/i);
     });
+
+    it("should reject unauthenticated request to /api/auth/change-password with 401 Unauthorized", async () => {
+      const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: "SomePassword@123",
+          newPassword: "NewRotatedPassword@2026",
+        }),
+      });
+      assert.equal(res.status, 401);
+    });
+
+    it("should reject password change with incorrect current password", async () => {
+      const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${citizenToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          currentPassword: "WrongPassword@999",
+          newPassword: "ValidRotatedPassword@2026",
+        }),
+      });
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.success, false);
+      assert.match(data.error, /incorrect current password/i);
+    });
+
+    it("should successfully rotate password when authenticated with valid current credentials", async () => {
+      const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${citizenToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          currentPassword: "BrandNewPassword@2026",
+          newPassword: "UpdatedRotatedSecret@2026",
+        }),
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
+    });
   });
 
   describe("4. Administrative Flow & Role-Based Access Control (RBAC)", () => {
@@ -294,7 +341,7 @@ describe("Comprehensive Security & Authentication Flows Suite", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           identifier: citizenEmail,
-          password: "BrandNewPassword@2026",
+          password: "UpdatedRotatedSecret@2026",
         }),
       });
 

@@ -35,8 +35,7 @@ import {
   withdrawApplication,
   deleteApplication,
 } from "../data/appliedSchemes.js";
-import { DEMO_PROFILES } from "../data/demoProfiles.js";
-import { INK, CARD, SEAL, OK, VERIFY, NO, RULE, serif, sans } from "../theme/tokens.js";
+import { GOVT_NAVY, SAFFRON, INK, CARD, SEAL, OK, VERIFY, NO, RULE, serif, sans } from "../theme/tokens.js";
 import { TRANSLATIONS } from "../theme/i18n.js";
 
 export default function ApplicationTracker({
@@ -591,7 +590,7 @@ export default function ApplicationTracker({
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: SEAL, marginBottom: 4 }}>
           <ShieldCheck size={16} />
           <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>
-            Citizen Application Portfolio &amp; Tracker
+            {t.trackerTitle || "Citizen Application Portfolio & Tracker"}
           </span>
           <span
             style={{
@@ -611,10 +610,10 @@ export default function ApplicationTracker({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h2 style={{ fontFamily: serif, fontSize: 26, color: INK, margin: "0 0 6px 0", fontWeight: 700 }}>
-              Scheme Application Progress
+              {t.trackerTitle || "Scheme Application Progress"}
             </h2>
             <p style={{ fontFamily: sans, fontSize: 13.5, color: "#475569", margin: 0, maxWidth: 650, lineHeight: 1.5 }}>
-              Verification tracking from digital submission to District Industries Centre (DIC) scrutiny, Lead Bank credit appraisal, and Direct Benefit Transfer (DBT).
+              {t.trackerSubtitle || "Verification tracking from digital submission to District Industries Centre (DIC) scrutiny, Lead Bank credit appraisal, and Direct Benefit Transfer (DBT)."}
             </p>
           </div>
 
@@ -635,7 +634,7 @@ export default function ApplicationTracker({
               cursor: "pointer",
             }}
           >
-            <span>Browse Scheme Directory</span>
+            <span>{t.browseMatchedSchemes || "Browse Scheme Directory"}</span>
             <ArrowRight size={14} />
           </button>
         </div>
@@ -743,7 +742,7 @@ export default function ApplicationTracker({
                 borderLeft: `4px solid ${SEAL}`,
               }}
             >
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>Active Applications</div>
+              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>{t.activeApplications || "Active Applications"}</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: INK, marginTop: 4 }}>
                 {totalApplied}
               </div>
@@ -761,7 +760,7 @@ export default function ApplicationTracker({
                 borderLeft: `4px solid ${OK}`,
               }}
             >
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>Sanctioned / Disbursed</div>
+              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>{t.sanctionedDisbursed || "Sanctioned / Disbursed"}</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: OK, marginTop: 4 }}>
                 {sanctionedCount}
               </div>
@@ -779,7 +778,7 @@ export default function ApplicationTracker({
                 borderLeft: `4px solid #23324A`,
               }}
             >
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>Total Loan Capital Applied</div>
+              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>{t.totalCapitalApplied || "Total Loan Capital Applied"}</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: INK, marginTop: 4 }}>
                 ₹{totalSanctionedAmt.toLocaleString("en-IN")}
               </div>
@@ -797,7 +796,7 @@ export default function ApplicationTracker({
                 borderLeft: `4px solid #8A5A17`,
               }}
             >
-              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>Estimated Govt Subsidy</div>
+              <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>{t.estimatedGovtSubsidy || "Estimated Govt Subsidy"}</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: SEAL, marginTop: 4 }}>
                 ₹{totalSubsidyAmt.toLocaleString("en-IN")}
               </div>
@@ -836,7 +835,7 @@ export default function ApplicationTracker({
               </div>
 
               <h3 style={{ fontFamily: serif, fontSize: 22, color: INK, margin: "0 0 8px 0", fontWeight: 700 }}>
-                No Scheme Applications Submitted Yet
+                {t.noAppsSubmitted || "No Scheme Applications Submitted Yet"}
               </h3>
 
               <p style={{ fontSize: 14, color: "#596275", maxWidth: 540, margin: "0 auto 20px auto", lineHeight: 1.5 }}>
@@ -863,7 +862,7 @@ export default function ApplicationTracker({
                   }}
                 >
                   <Sparkles size={16} />
-                  <span>Browse {matchedSchemesCount} Matched Schemes to Apply</span>
+                  <span>{t.browseMatchedSchemes || "Browse Matched Schemes to Apply"}</span>
                 </button>
 
                 <button
@@ -984,7 +983,7 @@ export default function ApplicationTracker({
                   />
                   <input
                     type="text"
-                    placeholder="Search your applications by reference ID or scheme name..."
+                    placeholder={t.searchApplications || "Search your applications by reference ID or scheme name..."}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     style={{
@@ -1002,11 +1001,11 @@ export default function ApplicationTracker({
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {[
-                    { id: "all", label: "All Applications" },
-                    { id: "in_review", label: "In Scrutiny / Review" },
-                    { id: "sanctioned", label: "Sanctioned by Bank" },
-                    { id: "disbursed", label: "DBT Disbursed" },
-                    { id: "withdrawn", label: "Withdrawn" },
+                    { id: "all", label: t.tabAllApps || "All Applications" },
+                    { id: "in_review", label: t.tabInReview || "In Scrutiny / Review" },
+                    { id: "sanctioned", label: t.tabSanctioned || "Sanctioned by Bank" },
+                    { id: "disbursed", label: t.tabDisbursed || "DBT Disbursed" },
+                    { id: "withdrawn", label: t.tabWithdrawn || "Withdrawn" },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -1060,11 +1059,11 @@ export default function ApplicationTracker({
             </div>
 
             <h3 style={{ fontFamily: serif, fontSize: 20, color: INK, margin: "0 0 6px 0", fontWeight: 700 }}>
-              Track Application Without Citizen Sign-In
+              {t.publicInquiryTitle || "Track Application Without Citizen Sign-In"}
             </h3>
 
             <p style={{ fontSize: 13.5, color: "#596275", margin: "0 0 16px 0", lineHeight: 1.45 }}>
-              Enter your 16-digit Application Reference Number or registered mobile number to retrieve live verification stages, lead bank sanctions, and DBT records.
+              {t.publicInquirySubtitle || "Enter your 16-digit Application Reference Number or registered mobile number to retrieve live verification stages, lead bank sanctions, and DBT records."}
             </p>
 
             <form onSubmit={handlePublicSearch} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
@@ -1105,42 +1104,12 @@ export default function ApplicationTracker({
                 }}
               >
                 <Search size={16} />
-                <span>{isSearchingPublic ? "Verifying..." : "Track Application"}</span>
+                <span>{isSearchingPublic ? "Verifying..." : (t.trackAppBtn || "Track Application")}</span>
               </button>
             </form>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11.5, color: "#6B7280", fontWeight: 600 }}>Quick Verification Samples:</span>
-              {[
-                { id: "APP-2026-UP-849201", label: "APP-2026-UP-849201 (Ramesh Kumar · PM Vishwakarma)" },
-                { id: "APP-2026-MH-492015", label: "APP-2026-MH-492015 (Priya Sharma · Divyangjan Loan)" },
-                { id: "APP-2026-UP-339102", label: "APP-2026-UP-339102 (PMEGP Review)" },
-              ].map((chip) => (
-                <button
-                  key={chip.id}
-                  type="button"
-                  onClick={() => {
-                    setPublicQuery(chip.id);
-                    lookupApplicationPublicly(chip.id).then((match) => {
-                      if (match) {
-                        setPublicResult(match);
-                        setPublicSearchError("");
-                      }
-                    });
-                  }}
-                  style={{
-                    background: "#F7F4EB",
-                    border: `1px solid ${RULE}`,
-                    color: INK,
-                    padding: "3px 10px",
-                    borderRadius: 12,
-                    fontSize: 11,
-                    cursor: "pointer",
-                  }}
-                >
-                  {chip.label}
-                </button>
-              ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "#64748B" }}>
+              <span>Official Format: <code>APP-YYYY-STATE-XXXXXX</code> (e.g. from receipt SMS or District Nodal Office acknowledgement)</span>
             </div>
 
             {publicSearchError && (
@@ -1235,73 +1204,35 @@ export default function ApplicationTracker({
               </button>
             </div>
 
-            {/* Quick Demo Citizen Login Shortcuts */}
             <div
               style={{
                 marginTop: 20,
                 paddingTop: 16,
                 borderTop: `1px solid ${RULE}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 12,
+                fontSize: 12.5,
+                color: "#64748B",
               }}
             >
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: INK, marginBottom: 8 }}>
-                Quick Test Citizen Accounts (Instant 1-Click Verification):
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {DEMO_PROFILES.slice(0, 3).map((demo) => {
-                  const demoAppsCount = getStoredApplications(demo.id).length;
-                  return (
-                    <button
-                      key={demo.id}
-                      type="button"
-                      onClick={() => {
-                        if (onLoginUser) {
-                          onLoginUser(demo, "tracker");
-                        }
-                      }}
-                      style={{
-                        background: "#FFFFFF",
-                        border: `1px solid ${RULE}`,
-                        padding: "8px 14px",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        textAlign: "left",
-                      }}
-                    >
-                      <span style={{ fontSize: 16 }}>{demo.avatar}</span>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: INK }}>{demo.name}</div>
-                        <div style={{ fontSize: 10.5, color: SEAL }}>
-                          {demoAppsCount} Active {demoAppsCount === 1 ? "App" : "Apps"}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-
-                <button
-                  type="button"
-                  onClick={() => onNavigate("login")}
-                  style={{
-                    background: "#FFFFFF",
-                    border: `1px dashed ${SEAL}`,
-                    padding: "8px 14px",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    color: SEAL,
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                >
-                  <User size={14} />
-                  <span>Register Fresh Account (0 Apps)</span>
-                </button>
-              </div>
+              <span>Don't have an application yet? Check your eligibility to get started.</span>
+              <button
+                type="button"
+                onClick={() => onNavigate("profile")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: SAFFRON,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                Check Scheme Eligibility ↗
+              </button>
             </div>
           </div>
         </div>

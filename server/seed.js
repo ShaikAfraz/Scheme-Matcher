@@ -3,6 +3,7 @@ import { DEMO_PROFILES } from "../src/data/demoProfiles.js";
 import { INITIAL_APPLICATIONS } from "../src/data/appliedSchemes.js";
 import { SCHEMES } from "../src/data/schemes.js";
 import { importSchemeBatch } from "./pipeline/importer.js";
+import crypto from "node:crypto";
 
 export function seedDatabaseIfEmpty() {
   // Only seed demo citizens if explicitly requested via environment variable
@@ -28,16 +29,26 @@ export function seedDatabaseIfEmpty() {
     }
   }
 
-  // Ensure an official Administrator account exists for Yuvraj Choudhary
-  const adminEmail = (process.env.ADMIN_INITIAL_EMAIL || "yuvrajc5027@gmail.com").toLowerCase().trim();
-  const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || "yuvraj1234";
-  createOrUpdateAdminAccount({
-    email: adminEmail,
-    password: adminPassword,
-    name: "Yuvraj Choudhary",
-    role: "Lead Administrator · Central Directorate of Welfare",
-    avatar: "🏛️",
-  });
+  // Ensure at least one official Administrator account exists in SQLite
+  const adminCount = db.prepare("SELECT count(*) as count FROM users WHERE system_role = 'admin'").get().count;
+  if (adminCount === 0) {
+    const adminEmail = (process.env.ADMIN_INITIAL_EMAIL || "admin@directorate.gov.in").toLowerCase().trim();
+    // Do not use a static predictable password in source: require environment variable or generate random token
+    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || crypto.randomBytes(16).toString("base64url");
+    createOrUpdateAdminAccount({
+      email: adminEmail,
+      password: adminPassword,
+      name: "Institutional Administrator",
+      role: "Lead Administrator · Central Directorate of Welfare",
+      avatar: "🏛️",
+      updatePassword: true,
+    });
+    console.log(`[Security] Initial administrator account bootstrapped for ${adminEmail}. Set ADMIN_INITIAL_PASSWORD in .env for custom credentials.`);
+  } else {
+    // Preserve existing admin accounts and passwords without resetting
+    const existingAdmin = db.prepare("SELECT email FROM users WHERE system_role = 'admin' LIMIT 1").get();
+    console.log(`[Security] Verified active administrator account: ${existingAdmin?.email || "active"}. Preserving existing encrypted credentials.`);
+  }
 
   const schemeCount = db.prepare("SELECT count(*) as count FROM schemes").get();
   if (schemeCount.count < SCHEMES.length) {

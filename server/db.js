@@ -18,7 +18,7 @@ import { runMigrations } from "./migrations.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DB_PATH = path.resolve(__dirname, "../database.sqlite");
+const DB_PATH = process.env.TEST_DB_PATH || process.env.DB_PATH || path.resolve(__dirname, "../database.sqlite");
 
 // Initialize SQLite connection
 export const db = new Database(DB_PATH);
@@ -1122,10 +1122,28 @@ export function formatSchemeRow(s) {
 // -------------------------------------------------------------
 // SECURE ADMINISTRATOR PROVISIONING & OPERATIONS
 // -------------------------------------------------------------
-export function createOrUpdateAdminAccount({ email, password, name, role = "Administrator", avatar = "🏛️" }) {
-  if (!email || !password) throw new Error("Email and password are required for admin account");
+export function createOrUpdateAdminAccount({ email, password, name, role = "Administrator", avatar = "🏛️", updatePassword = false }) {
+  if (!email) throw new Error("Email is required for admin account");
   const existing = getUserByEmailOrMobile(email);
   const id = existing ? existing.id : `adm_${Date.now()}`;
+
+  if (existing) {
+    // Preserve existing password unless explicit update was requested
+    const updates = ["name = ?", "role = ?", "avatar = ?", "system_role = 'admin'", "updated_at = CURRENT_TIMESTAMP"];
+    const params = [name || existing.name, role || existing.role, avatar || existing.avatar];
+
+    if (updatePassword && password) {
+      const finalPassword = password.startsWith("scrypt:") ? password : hashPassword(password);
+      updates.push("password = ?");
+      params.push(finalPassword);
+    }
+
+    params.push(id);
+    db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+    return { id, email, name: name || existing.name, role: role || existing.role };
+  }
+
+  if (!password) throw new Error("Password is required for newly provisioned admin account");
   const finalPassword = password.startsWith("scrypt:") ? password : hashPassword(password);
 
   const stmt = db.prepare(`
@@ -1136,14 +1154,6 @@ export function createOrUpdateAdminAccount({ email, password, name, role = "Admi
       @id, @name, @email, @mobile, @password, @avatar, @role, 'admin',
       'Administrator', '#1E3A8A', 0, NULL
     )
-    ON CONFLICT(id) DO UPDATE SET
-      name = excluded.name,
-      email = excluded.email,
-      password = excluded.password,
-      avatar = excluded.avatar,
-      role = excluded.role,
-      system_role = 'admin',
-      updated_at = CURRENT_TIMESTAMP
   `);
 
   stmt.run({
@@ -1163,8 +1173,48 @@ export function createOrUpdateAdminAccount({ email, password, name, role = "Admi
     resourceId: id,
     details: { email },
   });
+  return { id, email, name: name || "System Administrator", role };
+}
 
-  return getUserById(id);
+/**
+ * Authenticated password rotation for citizens and administrators
+ */
+export function changeUserPassword(userId, currentPassword, newPassword) {
+  if (!userId) return { success: false, error: "Authentication required to change password." };
+  if (!currentPassword || !newPassword) {
+    return { success: false, error: "Both current password and new password are required." };
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    return { success: false, error: "New password must be at least 8 characters long." };
+  }
+
+  // Password complexity check
+  const hasLetter = /[a-zA-Z]/.test(newPassword);
+  const hasNumber = /[0-9]/.test(newPassword);
+  if (!hasLetter || !hasNumber) {
+    return { success: false, error: "Password must contain at least one letter and one number for statutory compliance." };
+  }
+
+  const user = getUserById(userId, false);
+  if (!user) return { success: false, error: "Account not found." };
+
+  const check = verifyPassword(currentPassword, user.password);
+  if (!check.valid) {
+    return { success: false, error: "Incorrect current password." };
+  }
+
+  const newHash = hashPassword(newPassword);
+  db.prepare("UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(newHash, userId);
+
+  recordAuditLog({
+    userId,
+    action: "USER_PASSWORD_ROTATED",
+    resourceType: "user",
+    resourceId: userId,
+    details: { timestamp: new Date().toISOString() },
+  });
+
+  return { success: true, message: "Password updated successfully." };
 }
 
 // -------------------------------------------------------------

@@ -40,6 +40,7 @@ import {
   getSystemStats,
   createPasswordResetToken,
   resetPasswordWithToken,
+  changeUserPassword,
   createOrUpdateAdminAccount,
   formatSchemeRow,
   getAdminSchemes,
@@ -58,6 +59,7 @@ import {
   formatDossierRow,
 } from "./db.js";
 import { sanitizeString, validateEmailOrMobile } from "./security.js";
+import { parseFinancialAmount } from "../src/utils/financialInput.js";
 import {
   validateUploadPayload,
   storeDocumentFile,
@@ -67,7 +69,42 @@ import {
 import { extractStructuredDocument } from "./verification/extractor.js";
 import { verifyDocument } from "./verification/engine.js";
 import { generateBankDossierPdf } from "./dossierPdf.js";
+import {
+  getSyncStatus,
+  runSync,
+  isSyncRunning,
+  getSyncRuns,
+  getSyncRunDetails,
+  getReviewQueue,
+  approveReviewItem,
+  rejectReviewItem,
+  batchApproveReviewItems,
+  retryFailedRun,
+  getSources,
+  updateSource,
+} from "./ingestion/syncService.js";
+import {
+  startScheduler,
+  stopScheduler,
+  getSchedulerStatus,
+} from "./ingestion/scheduler.js";
 import "./seed.js";
+import fs from "node:fs";
+import path from "node:path";
+
+// Initialize ingestion background scheduler on module load
+let schedulerStarted = false;
+function initSchedulerOnce() {
+  if (!schedulerStarted) {
+    schedulerStarted = true;
+    try {
+      startScheduler(60000);
+    } catch (err) {
+      console.warn("[Ingestion Scheduler] Init deferred:", err.message);
+    }
+  }
+}
+initSchedulerOnce();
 
 // Helper to parse JSON request bodies safely (supports base64 documents up to 15MB)
 async function parseJsonBody(req) {
@@ -145,6 +182,35 @@ function getAuthUser(req) {
 
   if (!token) return null;
   return getSessionUser(token);
+}
+
+// Read AI API key from environment variables or .env / .env.local
+function getAiApiKey() {
+  const envCandidates = [
+    process.env.OPENROUTER_API_KEY,
+    process.env.VITE_OPENROUTER_API_KEY,
+    process.env.AI_API_KEY,
+    process.env.GEMINI_API_KEY,
+    process.env.VITE_GEMINI_API_KEY,
+  ];
+  for (const c of envCandidates) {
+    if (c && typeof c === "string" && c.trim()) return c.trim();
+  }
+
+  // Fallback: parse .env.local and .env directly from filesystem
+  const envFiles = [".env.local", ".env"];
+  for (const file of envFiles) {
+    try {
+      if (fs.existsSync(file)) {
+        const content = fs.readFileSync(file, "utf8");
+        const match = content.match(/(?:OPENROUTER_API_KEY|VITE_OPENROUTER_API_KEY|AI_API_KEY|GEMINI_API_KEY|VITE_GEMINI_API_KEY)=([^\r\n]+)/);
+        if (match && match[1] && match[1].trim()) {
+          return match[1].trim();
+        }
+      }
+    } catch {}
+  }
+  return null;
 }
 
 // Generate grounded fallback response when external AI is unavailable
@@ -264,6 +330,27 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 409, { success: false, error: "An account with this email or mobile number already exists." }, req);
         }
 
+        let initialProfile = data.profileData || data || {};
+        if (typeof initialProfile === "object") {
+          initialProfile = { ...initialProfile };
+          if (initialProfile.income !== undefined && initialProfile.income !== null && initialProfile.income !== "") {
+            const parsedInc = parseFinancialAmount(initialProfile.income, { fieldName: "Annual Family Income" });
+            if (parsedInc.valid && parsedInc.numeric != null) {
+              initialProfile.income = parsedInc.numeric;
+            }
+          }
+          if (initialProfile.financialRequirement !== undefined && initialProfile.financialRequirement !== null && initialProfile.financialRequirement !== "") {
+            const parsedReq = parseFinancialAmount(initialProfile.financialRequirement, { fieldName: "Financial Requirement" });
+            if (parsedReq.valid && parsedReq.numeric != null) {
+              initialProfile.financialRequirement = parsedReq.numeric;
+            }
+          }
+          if (initialProfile.age !== undefined && initialProfile.age !== null && initialProfile.age !== "") {
+            const a = Number(initialProfile.age);
+            if (!isNaN(a)) initialProfile.age = a;
+          }
+        }
+
         const newUser = saveUser({
           id: `usr_${Date.now()}`,
           name,
@@ -276,7 +363,7 @@ export function createDatabaseApiMiddleware() {
           categoryBadge: `${data.category || "Citizen"} · ${data.state || "India"}`,
           badgeColor: "#B5651D",
           isDemo: false,
-          profileData: data.profileData || data,
+          profileData: initialProfile,
         });
 
         // Create session
@@ -404,6 +491,25 @@ export function createDatabaseApiMiddleware() {
         return sendJson(res, 200, resetStatus, req);
       }
 
+      // Password Rotation (Authenticated User or Administrator)
+      if (pathname === "/api/auth/change-password" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required to rotate password." }, req);
+        }
+
+        const data = await parseJsonBody(req);
+        const currentPassword = String(data.currentPassword || data.oldPassword || "");
+        const newPassword = String(data.newPassword || "");
+
+        const changeResult = changeUserPassword(authUser.id, currentPassword, newPassword);
+        if (!changeResult.success) {
+          return sendJson(res, 400, changeResult, req);
+        }
+
+        return sendJson(res, 200, changeResult, req);
+      }
+
       if (pathname === "/api/auth/logout" && req.method === "POST") {
         const authHeader = req.headers.authorization || req.headers["x-session-token"];
         if (authHeader) {
@@ -429,7 +535,40 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 401, { success: false, error: "Authentication required to update profile." }, req);
         }
         const data = await parseJsonBody(req);
-        const updatedUser = updateUserProfile(authUser.id, data);
+        if (!data || typeof data !== "object") {
+          return sendJson(res, 400, { success: false, error: "Invalid profile data payload." }, req);
+        }
+
+        const cleanData = { ...data };
+
+        // Validate and sanitize Annual Family Income
+        if (cleanData.income !== undefined && cleanData.income !== null && cleanData.income !== "") {
+          const parsedIncome = parseFinancialAmount(cleanData.income, { fieldName: "Annual Family Income" });
+          if (!parsedIncome.valid) {
+            return sendJson(res, 400, { success: false, error: parsedIncome.error }, req);
+          }
+          cleanData.income = parsedIncome.numeric;
+        }
+
+        // Validate and sanitize Project Cost / Financial Requirement
+        if (cleanData.financialRequirement !== undefined && cleanData.financialRequirement !== null && cleanData.financialRequirement !== "") {
+          const parsedReq = parseFinancialAmount(cleanData.financialRequirement, { fieldName: "Financial Requirement" });
+          if (!parsedReq.valid) {
+            return sendJson(res, 400, { success: false, error: parsedReq.error }, req);
+          }
+          cleanData.financialRequirement = parsedReq.numeric;
+        }
+
+        // Validate age if provided
+        if (cleanData.age !== undefined && cleanData.age !== null && cleanData.age !== "") {
+          const ageNum = Number(cleanData.age);
+          if (isNaN(ageNum) || ageNum < 0 || ageNum > 125) {
+            return sendJson(res, 400, { success: false, error: "Please enter a valid age between 0 and 125." }, req);
+          }
+          cleanData.age = ageNum;
+        }
+
+        const updatedUser = updateUserProfile(authUser.id, cleanData);
         return sendJson(res, 200, {
           success: true,
           message: "Profile updated successfully.",
@@ -1425,6 +1564,247 @@ export function createDatabaseApiMiddleware() {
       }
 
       // ---------------------------------------------------------
+      // 10. ADMIN SCHEME DATA INGESTION & SYNCHRONIZATION API
+      // ---------------------------------------------------------
+      // 10.1 Get Sync Status & Ingestion Health
+      if (pathname === "/api/admin/sync/status" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        return sendJson(res, 200, {
+          success: true,
+          status: getSyncStatus(),
+          scheduler: getSchedulerStatus(),
+        }, req);
+      }
+
+      // 10.2 Trigger On-Demand Scheme Sync
+      if (pathname === "/api/admin/sync/run" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const body = await parseJsonBody(req);
+        try {
+          const run = await runSync({
+            sourceId: body.sourceId || "src_myscheme_api",
+            triggerType: "manual",
+            actorId: authUser.email,
+            options: body.options || {},
+          });
+          return sendJson(res, 200, { success: true, run }, req);
+        } catch (err) {
+          return sendJson(res, 400, { success: false, error: err.message }, req);
+        }
+      }
+
+      // 10.3 Import Authorized JSON/CSV Dataset File
+      if (pathname === "/api/admin/sync/upload" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const body = await parseJsonBody(req);
+        if (!body.content) {
+          return sendJson(res, 400, { success: false, error: "Dataset file content is required." }, req);
+        }
+        try {
+          const fileFormat = body.format || (body.filename?.toLowerCase().endsWith(".csv") ? "csv" : "json");
+          const run = await runSync({
+            sourceId: body.sourceId || "src_file_dataset",
+            triggerType: "manual",
+            actorId: authUser.email,
+            rawFileContent: body.content,
+            fileFormat,
+            fileName: body.filename || `dataset-import-${Date.now()}.${fileFormat}`,
+            options: body.options || {},
+          });
+          return sendJson(res, 200, { success: true, run }, req);
+        } catch (err) {
+          return sendJson(res, 400, { success: false, error: err.message }, req);
+        }
+      }
+
+      // 10.4 List Sync Runs History
+      if (pathname === "/api/admin/sync/runs" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+        const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+        const runs = getSyncRuns({ limit, offset });
+        return sendJson(res, 200, { success: true, count: runs.length, runs }, req);
+      }
+
+      // 10.5 Get Single Sync Run Details & Staged Items
+      if (pathname.startsWith("/api/admin/sync/runs/") && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const runId = pathname.replace("/api/admin/sync/runs/", "");
+        const details = getSyncRunDetails(runId);
+        if (!details) {
+          return sendJson(res, 404, { success: false, error: "Sync run record not found." }, req);
+        }
+        return sendJson(res, 200, { success: true, ...details }, req);
+      }
+
+      // 10.6 List Staged Ingestion Review Queue
+      if (pathname === "/api/admin/sync/review-queue" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const runId = url.searchParams.get("runId") || undefined;
+        const changeType = url.searchParams.get("changeType") || undefined;
+        const status = url.searchParams.get("status") || undefined;
+        const search = url.searchParams.get("search") || undefined;
+        const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+        const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+
+        const queue = getReviewQueue({ runId, changeType, status, search, limit, offset });
+        return sendJson(res, 200, { success: true, ...queue }, req);
+      }
+
+      // 10.7 Approve or Reject Staged Sync Item
+      if (pathname === "/api/admin/sync/review" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const body = await parseJsonBody(req);
+        const { itemId, decision, reviewNotes } = body;
+        if (!itemId || !decision) {
+          return sendJson(res, 400, { success: false, error: "itemId and decision ('approve' or 'reject') required." }, req);
+        }
+        try {
+          let result;
+          if (decision === "approve") {
+            result = approveReviewItem(itemId, authUser.email, reviewNotes || "");
+          } else if (decision === "reject") {
+            result = rejectReviewItem(itemId, authUser.email, reviewNotes || "");
+          } else {
+            return sendJson(res, 400, { success: false, error: "Invalid decision. Must be 'approve' or 'reject'." }, req);
+          }
+          return sendJson(res, 200, { success: true, result }, req);
+        } catch (err) {
+          return sendJson(res, 400, { success: false, error: err.message }, req);
+        }
+      }
+
+      // 10.8 Batch Approve Staged Sync Items
+      if (pathname === "/api/admin/sync/review/batch" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const body = await parseJsonBody(req);
+        const { itemIds, reviewNotes } = body;
+        if (!Array.isArray(itemIds) || itemIds.length === 0) {
+          return sendJson(res, 400, { success: false, error: "Array of itemIds is required." }, req);
+        }
+        try {
+          const result = batchApproveReviewItems(itemIds, authUser.email, reviewNotes || "");
+          return sendJson(res, 200, { success: true, ...result }, req);
+        } catch (err) {
+          return sendJson(res, 400, { success: false, error: err.message }, req);
+        }
+      }
+
+      // 10.9 Retry Failed Sync Run
+      if (pathname.startsWith("/api/admin/sync/retry/") && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const runId = pathname.replace("/api/admin/sync/retry/", "");
+        try {
+          const run = await retryFailedRun(runId, authUser.email);
+          return sendJson(res, 200, { success: true, run }, req);
+        } catch (err) {
+          return sendJson(res, 400, { success: false, error: err.message }, req);
+        }
+      }
+
+      // 10.10 List and Configure Registered Ingestion Sources
+      if (pathname === "/api/admin/sync/sources" && req.method === "GET") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const sources = getSources();
+        return sendJson(res, 200, { success: true, sources }, req);
+      }
+
+      if (pathname.startsWith("/api/admin/sync/sources/") && req.method === "PATCH") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const sourceId = pathname.replace("/api/admin/sync/sources/", "");
+        const body = await parseJsonBody(req);
+        const ok = updateSource(sourceId, body);
+        return sendJson(res, 200, { success: ok, sourceId }, req);
+      }
+
+      // 10.11 Manage Ingestion Background Scheduler
+      if (pathname === "/api/admin/sync/scheduler" && req.method === "POST") {
+        const authUser = getAuthUser(req);
+        if (!authUser) {
+          return sendJson(res, 401, { success: false, error: "Authentication required." }, req);
+        }
+        if (authUser.systemRole !== "admin") {
+          return sendJson(res, 403, { success: false, error: "Access denied: Administrator privileges required." }, req);
+        }
+        const body = await parseJsonBody(req);
+        let scheduler;
+        if (body.action === "start") {
+          scheduler = startScheduler(body.intervalMs || 60000);
+        } else if (body.action === "stop") {
+          scheduler = stopScheduler();
+        } else {
+          scheduler = getSchedulerStatus();
+        }
+        return sendJson(res, 200, { success: true, scheduler }, req);
+      }
+
+      // ---------------------------------------------------------
       // SCHEMES ENDPOINT (PUBLIC INFORMATION)
       // ---------------------------------------------------------
       if (pathname === "/api/schemes" && req.method === "GET") {
@@ -1454,62 +1834,129 @@ export function createDatabaseApiMiddleware() {
           return sendJson(res, 400, { success: false, error: "Question is required." }, req);
         }
 
-        // Read API key from server environment variable ONLY
-        const serverKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+        // Read API key from server environment or .env configuration
+        const serverKey = getAiApiKey();
 
         if (serverKey) {
           try {
-            const context = matches.slice(0, 5).map(({ scheme, score, reasons }) => ({
+            const context = matches.slice(0, 5).map(({ scheme, score, matchRating, reasons }) => ({
               name: scheme?.name || "",
               ministry: scheme?.ministry || "",
-              match_score: score ?? 0,
+              match_rating: matchRating ?? score ?? 0,
               why_match: reasons?.green || [],
               benefits: scheme?.benefits || "",
               documents: scheme?.documents || [],
+              portal_url: scheme?.portalUrl || scheme?.portal_url || scheme?.source || "",
             }));
 
             const systemPrompt =
-              "You are the official AI Assistant for the 'AI-Driven Scheme Matching Platform' (Ministry of Social Justice & Empowerment).\n" +
-              "Answer questions grounded strictly and exclusively in the pre-computed scheme criteria and user profile provided below.\n" +
+              "You are the official AI Assistant for the 'AI-Driven Scheme Matching Platform' (Ministry of Social Justice & Empowerment, Government of India).\n" +
+              "Answer questions grounded strictly and factually in the pre-computed scheme criteria and user profile provided below.\n" +
               "CRITICAL ARCHITECTURAL RULES:\n" +
               "1. NEVER invent scheme benefits, application deadlines, eligibility criteria, or official sources.\n" +
               "2. Explain eligibility through the 3 canonical statuses: Eligible, Potentially Eligible, and Not Eligible.\n" +
-              "3. Clarify that match scores (0-100) indicate relevance and never override failed mandatory criteria.\n" +
+              "3. Clarify that match ratings (0-100) indicate profile compatibility and never override failed mandatory criteria.\n" +
               "4. ALWAYS state that final approval and benefit sanction belong exclusively to the competent departmental authority / financing bank upon physical document scrutiny.\n" +
               "5. Provide official application portal links directly from the stored scheme data.\n" +
               "User Profile: " + JSON.stringify(profile) + "\n\n" +
               "Pre-computed Matches: " + JSON.stringify(context);
 
-            const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${serverKey}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [
-                    {
-                      role: "user",
-                      parts: [{ text: `${systemPrompt}\n\nUser Question: ${question}` }],
-                    },
-                  ],
-                  generationConfig: {
-                    temperature: 0.2,
-                    maxOutputTokens: 1024,
-                  },
-                }),
-              }
-            );
+            let answerText = null;
+            let providerUsed = "local";
 
-            if (response.ok) {
-              const data = await response.json();
-              const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text) {
-                return sendJson(res, 200, {
-                  success: true,
-                  answer: text,
-                  mode: "live_ai",
-                }, req);
+            // If OpenRouter API key (starts with "sk-or-" or specified as OpenRouter)
+            if (serverKey.startsWith("sk-or-") || process.env.OPENROUTER_API_KEY) {
+              const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${serverKey}`,
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "http://localhost:5173",
+                  "X-Title": "Scheme Matcher AI Assistant",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash",
+                  max_tokens: 1000,
+                  temperature: 0.2,
+                  messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: question },
+                  ],
+                }),
+                signal: AbortSignal.timeout(15000),
+              });
+
+              if (openRouterRes.ok) {
+                const orData = await openRouterRes.json();
+                answerText = orData.choices?.[0]?.message?.content;
+                providerUsed = "openrouter (google/gemini-2.5-flash)";
+              } else {
+                const errData = await openRouterRes.json().catch(() => ({}));
+                console.warn("[OpenRouter] Primary model response error, attempting deepseek fallback:", errData?.error?.message || openRouterRes.statusText);
+
+                // Fallback attempt on OpenRouter with deepseek/deepseek-chat
+                const fallbackRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${serverKey}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "http://localhost:5173",
+                    "X-Title": "Scheme Matcher AI Assistant",
+                  },
+                  body: JSON.stringify({
+                    model: "deepseek/deepseek-chat",
+                    max_tokens: 1000,
+                    temperature: 0.2,
+                    messages: [
+                      { role: "system", content: systemPrompt },
+                      { role: "user", content: question },
+                    ],
+                  }),
+                  signal: AbortSignal.timeout(15000),
+                });
+                if (fallbackRes.ok) {
+                  const fbData = await fallbackRes.json();
+                  answerText = fbData.choices?.[0]?.message?.content;
+                  providerUsed = "openrouter (deepseek/deepseek-chat)";
+                }
               }
+            } else {
+              // Standard Google Gemini API endpoint
+              const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${serverKey}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [
+                      {
+                        role: "user",
+                        parts: [{ text: `${systemPrompt}\n\nUser Question: ${question}` }],
+                      },
+                    ],
+                    generationConfig: {
+                      temperature: 0.2,
+                      maxOutputTokens: 1000,
+                    },
+                  }),
+                  signal: AbortSignal.timeout(15000),
+                }
+              );
+
+              if (response.ok) {
+                const data = await response.json();
+                answerText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                providerUsed = "google-gemini";
+              }
+            }
+
+            if (answerText && answerText.trim()) {
+              return sendJson(res, 200, {
+                success: true,
+                answer: answerText.trim(),
+                mode: "live_ai",
+                provider: providerUsed,
+              }, req);
             }
           } catch (err) {
             console.warn("[AI Proxy] Server API call failed, falling back to deterministic engine:", err.message);
@@ -1524,6 +1971,7 @@ export function createDatabaseApiMiddleware() {
           mode: "grounded_offline",
         }, req);
       }
+
 
       return sendJson(res, 404, { success: false, error: "API route not found." }, req);
     } catch (err) {

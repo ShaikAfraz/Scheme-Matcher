@@ -392,6 +392,165 @@ export function runMigrations(db) {
     console.log("[Migration] Migration 8 applied successfully.");
   }
 
+  // -------------------------------------------------------------------------
+  // MIGRATION 9: Automated Government Scheme Ingestion & Synchronization
+  // -------------------------------------------------------------------------
+  const m9 = db.prepare("SELECT version FROM schema_migrations WHERE version = 9").get();
+  if (!m9) {
+    console.log("[Migration] Applying Migration 9: Automated Scheme Ingestion, Sync Runs, and Versioning...");
+
+    // 1. Scheme Sources Table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scheme_sources (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        endpoint_url TEXT,
+        auth_type TEXT DEFAULT 'none',
+        auth_config TEXT,
+        is_active INTEGER DEFAULT 1,
+        sync_interval_minutes INTEGER DEFAULT 1440,
+        last_sync_at DATETIME,
+        last_sync_status TEXT DEFAULT 'idle',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_scheme_sources_type ON scheme_sources(source_type);
+      CREATE INDEX IF NOT EXISTS idx_scheme_sources_active ON scheme_sources(is_active);
+    `);
+
+    // 2. Scheme Sync Runs Table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scheme_sync_runs (
+        id TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL,
+        trigger_type TEXT DEFAULT 'manual',
+        status TEXT DEFAULT 'running',
+        total_retrieved INTEGER DEFAULT 0,
+        new_detected INTEGER DEFAULT 0,
+        updated_detected INTEGER DEFAULT 0,
+        duplicate_count INTEGER DEFAULT 0,
+        failed_count INTEGER DEFAULT 0,
+        needs_review_count INTEGER DEFAULT 0,
+        error_message TEXT,
+        log_json TEXT,
+        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        created_by TEXT,
+        FOREIGN KEY(source_id) REFERENCES scheme_sources(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_runs_source ON scheme_sync_runs(source_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_runs_status ON scheme_sync_runs(status);
+      CREATE INDEX IF NOT EXISTS idx_sync_runs_started ON scheme_sync_runs(started_at);
+    `);
+
+    // 3. Scheme Sync Staging & Review Queue Table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scheme_sync_items (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        source_record_id TEXT,
+        scheme_id TEXT,
+        scheme_name TEXT NOT NULL,
+        change_type TEXT DEFAULT 'new',
+        content_hash TEXT,
+        raw_data TEXT,
+        normalized_data TEXT NOT NULL,
+        status TEXT DEFAULT 'staged',
+        review_status TEXT DEFAULT 'Source Imported',
+        validation_errors TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at DATETIME,
+        reviewed_by TEXT,
+        review_notes TEXT,
+        FOREIGN KEY(run_id) REFERENCES scheme_sync_runs(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_items_run ON scheme_sync_items(run_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_items_status ON scheme_sync_items(status);
+      CREATE INDEX IF NOT EXISTS idx_sync_items_review ON scheme_sync_items(review_status);
+      CREATE INDEX IF NOT EXISTS idx_sync_items_scheme ON scheme_sync_items(scheme_id);
+    `);
+
+    // 4. Scheme Versioning & Audit History Table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scheme_versions (
+        id TEXT PRIMARY KEY,
+        scheme_id TEXT NOT NULL,
+        version_num INTEGER NOT NULL,
+        snapshot_json TEXT NOT NULL,
+        changed_fields_json TEXT,
+        change_source TEXT DEFAULT 'sync',
+        actor_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(scheme_id) REFERENCES schemes(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_scheme_versions_scheme ON scheme_versions(scheme_id);
+      CREATE INDEX IF NOT EXISTS idx_scheme_versions_created ON scheme_versions(created_at);
+    `);
+
+    // 5. Extend Schemes table with ingestion tracking columns
+    if (hasTable("schemes")) {
+      const schemeCols = db.prepare("PRAGMA table_info(schemes)").all().map((c) => c.name);
+      const addSchemeCol = (name, type) => {
+        if (!schemeCols.includes(name)) {
+          db.exec(`ALTER TABLE schemes ADD COLUMN ${name} ${type};`);
+        }
+      };
+      addSchemeCol("source_id", "TEXT DEFAULT 'src_official_baseline'");
+      addSchemeCol("source_url", "TEXT");
+      addSchemeCol("content_hash", "TEXT");
+      addSchemeCol("last_synced_at", "DATETIME");
+      addSchemeCol("sync_status", "TEXT DEFAULT 'synced'");
+      addSchemeCol("review_status", "TEXT DEFAULT 'Officially Verified'");
+
+      db.exec("CREATE INDEX IF NOT EXISTS idx_schemes_review_status ON schemes(review_status);");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_schemes_source_id ON schemes(source_id);");
+    }
+
+    // 6. Seed official authorized sources
+    const insertSource = db.prepare(`
+      INSERT OR IGNORE INTO scheme_sources (
+        id, name, source_type, endpoint_url, auth_type, auth_config, is_active, sync_interval_minutes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertSource.run(
+      "src_myscheme_api",
+      "myScheme National Portal (API Setu / MeitY)",
+      "api_setu",
+      "https://apisetu.gov.in/myscheme/v1/schemes",
+      "api_key",
+      JSON.stringify({ headerKey: "X-APISETU-APIKEY", clientIdKey: "X-APISETU-CLIENTID" }),
+      1,
+      1440
+    );
+
+    insertSource.run(
+      "src_datagov_in",
+      "Open Government Data Platform (data.gov.in)",
+      "data_gov",
+      "https://api.data.gov.in/resource/schemes",
+      "api_key",
+      JSON.stringify({ paramKey: "api-key" }),
+      1,
+      1440
+    );
+
+    insertSource.run(
+      "src_file_dataset",
+      "Authorized Machine-Readable Dataset (CSV / JSON)",
+      "file_upload",
+      null,
+      "none",
+      null,
+      1,
+      0
+    );
+
+    db.prepare("INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (9, 'automated_scheme_ingestion_and_sync')").run();
+    console.log("[Migration] Migration 9 applied successfully: Ingestion tables, sources, and scheme extensions created.");
+  }
+
   // Ensure audit_logs supports both actor_id / target_id and user_id / resource_id
   if (hasTable("audit_logs")) {
     const auditCols = db.prepare("PRAGMA table_info(audit_logs)").all().map((c) => c.name);

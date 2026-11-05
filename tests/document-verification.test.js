@@ -74,11 +74,12 @@ describe("Document Verification, Extraction & Secure Storage Workflow", () => {
   let createdDocIds = [];
 
   before(() => {
+    const ts = Date.now();
     // 1. Create primary test citizen
     citizenUser = saveUser({
       name: "Sunita Sharma",
-      email: "sunita.verification.test@example.com",
-      mobile: "9876599001",
+      email: `sunita.verification.${ts}@example.com`,
+      mobile: `98${String(ts).slice(-8)}`,
       password: "Password@123",
       role: "Micro Entrepreneur",
       category: "OBC",
@@ -90,8 +91,8 @@ describe("Document Verification, Extraction & Secure Storage Workflow", () => {
     // 2. Create second test citizen for conflict & access tests
     secondCitizenUser = saveUser({
       name: "Ramesh Kumar",
-      email: "ramesh.conflict.test@example.com",
-      mobile: "9876599002",
+      email: `ramesh.conflict.${ts}@example.com`,
+      mobile: `97${String(ts).slice(-8)}`,
       password: "Password@123",
       role: "Artisan",
       category: "SC",
@@ -102,8 +103,8 @@ describe("Document Verification, Extraction & Secure Storage Workflow", () => {
     // 3. Create admin user
     adminUser = saveUser({
       name: "Verification Officer K. Rao",
-      email: "officer.rao.test@schemematcher.gov.in",
-      mobile: "9876599003",
+      email: `officer.rao.${ts}@schemematcher.gov.in`,
+      mobile: `96${String(ts).slice(-8)}`,
       password: "AdminPassword@123",
       role: "Nodal Verification Officer",
       systemRole: "admin",
