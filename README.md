@@ -1,4 +1,4 @@
-# AI-Driven Scheme Matching for Marginalized Entrepreneurs (SIH26092)
+# AI-Driven Scheme Matching for Marginalized Entrepreneurs 
 
 **Ministry:** Ministry of Social Justice & Empowerment  
 **Problem Statement ID:** SIH26092  
